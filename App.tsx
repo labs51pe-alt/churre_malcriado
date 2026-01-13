@@ -42,7 +42,7 @@ const App: React.FC = () => {
 
   // Inyectar variables de color dinámicas basadas en Settings
   useEffect(() => {
-    const brand = settings.themeColor || '#e11d48';
+    const brand = typeof settings.themeColor === 'string' ? settings.themeColor : '#e11d48';
     document.documentElement.style.setProperty('--brand-primary', brand);
     document.documentElement.style.setProperty('--brand-soft', `${brand}15`);
     document.documentElement.style.setProperty('--brand-medium', `${brand}44`);

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Product, ProductVariant } from '../types';
 import { CATEGORIES } from '../constants';
 import { Cart } from './Cart';
-import { Lock, Wallet, LayoutGrid, List, ScanBarcode, Search, Layers, ShoppingBasket, Plus, AlertCircle, X, Tag, Store } from 'lucide-react';
+import { Lock, Wallet, LayoutGrid, List, ScanBarcode, Search, Layers, ShoppingBasket, Plus, AlertCircle, X, Tag, Store, ImageIcon } from 'lucide-react';
 
 export const POSView = ({ products, cart, onAddToCart, onUpdateCart, onRemoveFromCart, onUpdateDiscount, onCheckout, onClearCart, settings, customers, activeShift, onOpenCashControl }: any) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -87,11 +87,10 @@ export const POSView = ({ products, cart, onAddToCart, onUpdateCart, onRemoveFro
   if (!activeShift) {
       return (
         <div className="h-full w-full flex flex-col items-center justify-center p-6 text-center animate-fade-in relative overflow-hidden bg-slate-50/10">
-            {/* Background blobs for depth */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-50 rounded-full blur-[120px] -z-10 opacity-50"></div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-soft rounded-full blur-[120px] -z-10 opacity-50"></div>
             
             <div className="bg-white/95 backdrop-blur-3xl p-12 rounded-[3.5rem] shadow-2xl border border-white max-w-sm w-full relative z-10 animate-fade-in-up">
-                <div className="w-24 h-24 bg-gradient-to-br from-slate-800 to-slate-900 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-slate-200 rotate-6 transform transition-transform hover:rotate-0">
+                <div className="w-24 h-24 bg-brand rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-brand-soft rotate-6 transform transition-transform hover:rotate-0">
                     <Lock className="w-10 h-10 text-white" />
                 </div>
                 
@@ -102,7 +101,7 @@ export const POSView = ({ products, cart, onAddToCart, onUpdateCart, onRemoveFro
                 
                 <button 
                     onClick={() => onOpenCashControl('OPEN')} 
-                    className="w-full py-5 bg-indigo-600 text-white rounded-[1.5rem] font-black text-lg shadow-xl shadow-indigo-100 hover:bg-indigo-700 hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 group"
+                    className="w-full py-5 bg-brand text-white rounded-[1.5rem] font-black text-lg shadow-xl shadow-brand-soft hover:opacity-90 transition-all flex items-center justify-center gap-3 group"
                 >
                     <Wallet className="w-6 h-6 group-hover:rotate-12 transition-transform"/>
                     <span>Abrir Turno</span>
@@ -115,7 +114,6 @@ export const POSView = ({ products, cart, onAddToCart, onUpdateCart, onRemoveFro
   return (
     <div className="h-full flex overflow-hidden">
         <div className="flex-1 flex flex-col p-6 overflow-hidden relative">
-            {/* Header Status */}
             <div className="flex justify-between items-start mb-6">
                 <div>
                     <div className="flex items-center gap-2">
@@ -125,25 +123,24 @@ export const POSView = ({ products, cart, onAddToCart, onUpdateCart, onRemoveFro
                     <p className="text-[10px] text-slate-400 font-bold mt-1 ml-5 tracking-widest uppercase">Punto de Venta Activo</p>
                 </div>
                 <button onClick={() => onOpenCashControl('IN')} className="px-5 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl font-bold flex items-center gap-2 shadow-sm hover:bg-slate-50 transition-all hover:scale-[1.02] active:scale-95">
-                    <Store className="w-4 h-4 text-indigo-500"/> Gestión de Caja
+                    <Store className="w-4 h-4 text-brand"/> Gestión de Caja
                 </button>
             </div>
 
-            {/* Toolbar */}
             <div className="flex gap-4 mb-4">
                 <div className="flex gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 h-[64px] items-center shrink-0 shadow-sm">
-                    <button onClick={() => setViewMode('GRID')} className={`h-full aspect-square flex items-center justify-center rounded-xl transition-all ${viewMode === 'GRID' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid className="w-6 h-6"/></button>
-                    <button onClick={() => setViewMode('LIST')} className={`h-full aspect-square flex items-center justify-center rounded-xl transition-all ${viewMode === 'LIST' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-400 hover:text-slate-600'}`}><List className="w-6 h-6"/></button>
+                    <button onClick={() => setViewMode('GRID')} className={`h-full aspect-square flex items-center justify-center rounded-xl transition-all ${viewMode === 'GRID' ? 'bg-brand text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid className="w-6 h-6"/></button>
+                    <button onClick={() => setViewMode('LIST')} className={`h-full aspect-square flex items-center justify-center rounded-xl transition-all ${viewMode === 'LIST' ? 'bg-brand text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}><List className="w-6 h-6"/></button>
                 </div>
                 <div className="flex-1 relative group">
                     <div className="absolute inset-y-0 left-0 pl-7 flex items-center pointer-events-none">
-                        <ScanBarcode className="w-6 h-6 text-indigo-500 group-focus-within:text-indigo-600 transition-colors" />
+                        <ScanBarcode className="w-6 h-6 text-brand group-focus-within:opacity-100 opacity-50 transition-opacity" />
                     </div>
                     <input 
                         ref={barcodeRef} 
                         type="text" 
                         placeholder="Escanear producto..." 
-                        className="w-full h-[64px] pl-16 pr-4 bg-white border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 outline-none font-bold text-lg text-slate-800 transition-all placeholder-slate-300 shadow-sm" 
+                        className="w-full h-[64px] pl-16 pr-4 bg-white border-2 border-slate-100 rounded-2xl focus:border-brand focus:ring-4 focus:ring-brand-soft outline-none font-bold text-lg text-slate-800 transition-all placeholder-slate-300 shadow-sm" 
                         value={posBarcodeBuffer} 
                         onChange={(e) => setPosBarcodeBuffer(e.target.value)} 
                         onKeyDown={handlePosScanner} 
@@ -152,14 +149,13 @@ export const POSView = ({ products, cart, onAddToCart, onUpdateCart, onRemoveFro
                 </div>
             </div>
 
-            {/* Search & Filter */}
-            <div className="flex gap-4 mb-6 items-center overflow-x-auto pb-1" id="pos-search-bar">
+            <div className="flex gap-4 mb-6 items-center overflow-x-auto pb-1 custom-scrollbar" id="pos-search-bar">
                 <div className="w-72 relative shrink-0">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5"/>
                     <input 
                         type="text" 
                         placeholder="Buscar por nombre..." 
-                        className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl shadow-sm focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-bold text-sm text-slate-700" 
+                        className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl shadow-sm focus:ring-4 focus:ring-brand-soft outline-none transition-all font-bold text-sm text-slate-700" 
                         value={searchTerm} 
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
@@ -172,7 +168,6 @@ export const POSView = ({ products, cart, onAddToCart, onUpdateCart, onRemoveFro
                 </div>
             </div>
 
-            {/* Products Area */}
             <div className="flex-1 overflow-y-auto custom-scrollbar" id="pos-products-grid">
                 {viewMode === 'GRID' ? (
                     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5 pb-20">
@@ -185,15 +180,14 @@ export const POSView = ({ products, cart, onAddToCart, onUpdateCart, onRemoveFro
                                     key={p.id} 
                                     onClick={() => handleProductClick(p)} 
                                     className={`
-                                        bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 
-                                        relative flex flex-col justify-between h-56 animate-fade-in-up
+                                        bg-white p-4 rounded-[2.5rem] shadow-sm border border-slate-100 
+                                        relative flex flex-col justify-between h-64 animate-fade-in-up
                                         transition-all duration-300
-                                        ${isOutOfStock ? 'opacity-60 grayscale cursor-not-allowed bg-slate-50' : 'cursor-pointer group hover:shadow-2xl hover:shadow-indigo-100/40 hover:-translate-y-2'}
+                                        ${isOutOfStock ? 'opacity-60 grayscale cursor-not-allowed bg-slate-50' : 'cursor-pointer group hover:shadow-2xl hover:shadow-brand-soft hover:-translate-y-2'}
                                     `}
                                     style={{animationDelay: `${idx * 30}ms`}}
                                 >
-                                    {/* Stock Badge - VIBRANT & HIGH VISIBILITY */}
-                                    <div className="flex justify-end absolute top-4 right-4 z-10">
+                                    <div className="flex justify-end absolute top-3 right-3 z-10">
                                         {isOutOfStock ? (
                                             <div className="bg-slate-200 px-3 py-1 rounded-xl text-[10px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1 shadow-sm">
                                                 <X className="w-3 h-3"/> Agotado
@@ -203,30 +197,39 @@ export const POSView = ({ products, cart, onAddToCart, onUpdateCart, onRemoveFro
                                                 px-3.5 py-1.5 rounded-[1rem] text-[12px] font-black shadow-xl flex items-center gap-1.5 transition-transform group-hover:scale-110
                                                 ${isLowStock 
                                                     ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-red-200' 
-                                                    : 'bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-indigo-200'}
+                                                    : 'bg-brand text-white shadow-brand-soft'}
                                             `}>
                                                 {p.stock} <span className="text-[8px] opacity-70 uppercase">uds</span>
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* Icon Placeholder */}
-                                    <div className="flex-1 flex items-center justify-center relative mt-6">
-                                        <div className={`text-slate-100 font-black text-8xl select-none transition-all duration-500 ${!isOutOfStock && 'group-hover:scale-125 group-hover:text-indigo-50'}`}>
-                                            {p.name.charAt(0)}
-                                        </div>
-                                        {p.hasVariants && <Layers className="absolute top-2 left-0 w-6 h-6 text-indigo-400 bg-indigo-50 rounded-xl p-1.5 shadow-sm"/>}
+                                    <div className="h-28 w-full bg-slate-50 rounded-[1.8rem] mb-3 overflow-hidden flex items-center justify-center relative shadow-inner">
+                                        {p.image ? (
+                                            <img 
+                                                src={p.image} 
+                                                alt={p.name} 
+                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                                onError={(e) => { (e.target as any).src = ''; (e.target as any).style.display = 'none'; }}
+                                            />
+                                        ) : (
+                                            <div className="text-slate-100 font-black text-6xl select-none transition-all duration-500 group-hover:scale-125 group-hover:text-brand-soft">
+                                                {p.name.charAt(0)}
+                                            </div>
+                                        )}
+                                        {p.hasVariants && <Layers className="absolute top-2 left-2 w-6 h-6 text-brand bg-white rounded-xl p-1.5 shadow-sm"/>}
                                     </div>
 
-                                    {/* Product Info */}
-                                    <div className="mt-3">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em] mb-1">{p.category}</p>
-                                        <h3 className="font-bold text-slate-800 leading-tight mb-2 truncate text-[15px]" title={p.name}>{p.name}</h3>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xl font-black text-slate-900 tracking-tight">{settings.currency}{p.price.toFixed(2)}</span>
+                                    <div className="px-1 flex-1 flex flex-col justify-between">
+                                        <div>
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.15em] mb-0.5">{p.category}</p>
+                                            <h3 className="font-bold text-slate-800 leading-tight mb-2 line-clamp-2 text-[14px]" title={p.name}>{p.name}</h3>
+                                        </div>
+                                        <div className="flex items-center justify-between mt-auto">
+                                            <span className="text-lg font-black text-slate-900 tracking-tight">{settings.currency}{p.price.toFixed(2)}</span>
                                             {!isOutOfStock && (
-                                                <div className="w-10 h-10 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm group-active:scale-90">
-                                                    <Plus className="w-6 h-6"/>
+                                                <div className="w-9 h-9 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center group-hover:bg-brand group-hover:text-white transition-all shadow-sm group-active:scale-90">
+                                                    <Plus className="w-5 h-5"/>
                                                 </div>
                                             )}
                                         </div>
@@ -254,21 +257,28 @@ export const POSView = ({ products, cart, onAddToCart, onUpdateCart, onRemoveFro
                                     return (
                                         <tr 
                                             key={p.id} 
-                                            className={`transition-colors ${isOutOfStock ? 'opacity-50 grayscale bg-slate-50' : 'hover:bg-indigo-50/40 cursor-pointer'}`} 
+                                            className={`transition-colors ${isOutOfStock ? 'opacity-50 grayscale bg-slate-50' : 'hover:bg-brand-soft cursor-pointer'}`} 
                                             onClick={() => !isOutOfStock && handleProductClick(p)}
                                         >
                                             <td className="p-6 pl-10">
-                                                <div className="font-black text-slate-800 text-[15px]">{p.name}</div>
-                                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-2 mt-1">
-                                                    {p.hasVariants && <Layers className="w-3 h-3 text-indigo-400"/>}
-                                                    {p.category} • {p.barcode}
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-10 h-10 rounded-xl bg-slate-50 overflow-hidden flex items-center justify-center border border-slate-100">
+                                                        {p.image ? <img src={p.image} className="w-full h-full object-cover" /> : <ImageIcon className="w-5 h-5 text-slate-200" />}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-black text-slate-800 text-[15px]">{p.name}</div>
+                                                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-2 mt-1">
+                                                            {p.hasVariants && <Layers className="w-3 h-3 text-brand"/>}
+                                                            {p.category} • {p.barcode}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="p-6">
                                                 {isOutOfStock ? (
                                                      <span className="text-[10px] px-3 py-1.5 rounded-lg font-black bg-slate-200 text-slate-500 uppercase tracking-widest">Agotado</span>
                                                 ) : (
-                                                    <span className={`text-[12px] px-4 py-1.5 rounded-xl font-black shadow-md ${isLowStock ? 'bg-red-500 text-white' : 'bg-indigo-600 text-white'}`}>
+                                                    <span className={`text-[12px] px-4 py-1.5 rounded-xl font-black shadow-md ${isLowStock ? 'bg-red-500 text-white' : 'bg-brand text-white'}`}>
                                                         {p.stock} unidades
                                                     </span>
                                                 )}
@@ -276,7 +286,7 @@ export const POSView = ({ products, cart, onAddToCart, onUpdateCart, onRemoveFro
                                             <td className="p-6 text-right font-black text-slate-900 text-lg">{settings.currency}{p.price.toFixed(2)}</td>
                                             <td className="p-6 text-right pr-10">
                                                 {!isOutOfStock && (
-                                                    <button className="p-3 bg-white border border-slate-200 shadow-sm text-indigo-600 rounded-2xl hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all active:scale-90">
+                                                    <button className="p-3 bg-white border border-slate-200 shadow-sm text-brand rounded-2xl hover:bg-brand hover:text-white hover:border-brand transition-all active:scale-90">
                                                         <Plus className="w-5 h-5" />
                                                     </button>
                                                 )}
@@ -311,12 +321,12 @@ export const POSView = ({ products, cart, onAddToCart, onUpdateCart, onRemoveFro
                                         p-6 rounded-[1.5rem] border-2 text-left transition-all flex justify-between items-center
                                         ${variant.stock <= 0 
                                             ? 'bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed' 
-                                            : 'bg-white border-slate-100 hover:border-indigo-500 hover:ring-8 hover:ring-indigo-50 shadow-sm'}
+                                            : 'bg-white border-slate-100 hover:border-brand hover:ring-8 hover:ring-brand-soft shadow-sm'}
                                     `}
                                 >
                                     <div>
                                         <p className="font-black text-slate-800 text-lg">{variant.name}</p>
-                                        <p className="font-black text-indigo-600 text-xl mt-1">{settings.currency}{variant.price.toFixed(2)}</p>
+                                        <p className="font-black text-brand text-xl mt-1">{settings.currency}{variant.price.toFixed(2)}</p>
                                     </div>
                                     <div className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest ${variant.stock <= 0 ? 'bg-slate-200 text-slate-500' : 'bg-emerald-500 text-white shadow-lg shadow-emerald-100'}`}>
                                         {variant.stock > 0 ? `${variant.stock} en stock` : 'Agotado'}
