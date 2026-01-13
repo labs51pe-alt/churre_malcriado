@@ -9,6 +9,7 @@ import { InventoryView } from './components/InventoryView';
 import { PurchasesView } from './components/PurchasesView';
 import { ReportsView } from './components/ReportsView';
 import { SettingsView } from './components/SettingsView';
+import { OnlineOrdersView } from './components/OnlineOrdersView';
 import { CashControlModal } from './components/CashControlModal';
 import { POSView } from './components/POSView';
 import { DEFAULT_SETTINGS, CATEGORIES } from './constants';
@@ -39,6 +40,9 @@ const App: React.FC = () => {
   const [ticketType, setTicketType] = useState<'SALE' | 'REPORT'>('SALE');
   const [ticketData, setTicketData] = useState<any>(null);
   const [initialPurchaseSearch, setInitialPurchaseSearch] = useState('');
+  
+  // Tracking del pedido web que se está cobrando
+  const [pendingWebOrderId, setPendingWebOrderId] = useState<string | null>(null);
 
   // Inyectar variables de color dinámicas basadas en Settings
   useEffect(() => {
@@ -130,6 +134,16 @@ const App: React.FC = () => {
       setCart(prev => prev.map(item => (item.id === id && item.selectedVariantId === variantId) ? { ...item, discount } : item)); 
   };
   
+  // Función para importar un pedido web al POS
+  const handleImportWebOrder = (order: Transaction) => {
+      if (!activeShift) return alert("Debes abrir la caja antes de procesar pagos.");
+      
+      // Limpiar carrito actual y cargar el del pedido web
+      setCart(order.items);
+      setPendingWebOrderId(order.id);
+      setView(ViewState.POS); // Cambiar a la vista de venta automáticamente
+  };
+
   const handleCheckout = async (method: any, payments: any[]) => {
       if(!activeShift) return alert("Abre un turno primero.");
       
@@ -149,11 +163,24 @@ const App: React.FC = () => {
           paymentMethod: method, 
           payments, 
           profit: 0, 
-          shiftId: activeShift.id 
+          shiftId: activeShift.id,
+          onlineOrderId: pendingWebOrderId || undefined
       };
       
       await StorageService.saveTransaction(transaction);
+
+      // Si venía de un pedido web, lo marcamos como completado en Supabase
+      if (pendingWebOrderId) {
+          const { error: updateError } = await StorageService.supabase
+            .from('orders')
+            .update({ status: 'Completado', session_id: parseInt(activeShift.id) })
+            .eq('id', pendingWebOrderId);
+          
+          if (updateError) console.error("Error al cerrar pedido web:", updateError);
+          setPendingWebOrderId(null);
+      }
       
+      // Actualizar stock
       const newProducts = products.map(p => { 
           const cartItems = cart.filter(c => c.id === p.id); 
           if (cartItems.length === 0) return p; 
@@ -269,9 +296,12 @@ const App: React.FC = () => {
                 <POSView 
                     products={products} cart={cart} activeShift={activeShift} settings={settings} customers={customers} 
                     onAddToCart={handleAddToCart} onUpdateCart={handleUpdateCartQuantity} onRemoveFromCart={handleRemoveFromCart} 
-                    onUpdateDiscount={handleUpdateDiscount} onCheckout={handleCheckout} onClearCart={() => setCart([])} 
+                    onUpdateDiscount={handleUpdateDiscount} onCheckout={handleCheckout} onClearCart={() => { setCart([]); setPendingWebOrderId(null); }} 
                     onOpenCashControl={(action: any) => setShowCashControl(true)} 
                 />
+            )}
+            {view === ViewState.ONLINE_ORDERS && (
+                <OnlineOrdersView settings={settings} activeShift={activeShift} onImportToPOS={handleImportWebOrder} />
             )}
             {view === ViewState.INVENTORY && (
                 <InventoryView 

@@ -4,7 +4,8 @@ export enum ViewState {
   INVENTORY,
   PURCHASES,
   REPORTS,
-  SETTINGS
+  SETTINGS,
+  ONLINE_ORDERS
 }
 
 export interface ProductVariant {
@@ -52,6 +53,13 @@ export interface Transaction {
   payments?: PaymentDetail[];
   profit: number;
   shiftId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  modality?: string;
+  address?: string;
+  status?: string;
+  orderOrigin?: string;
+  onlineOrderId?: string; // ID del pedido original de la web si existe
 }
 
 export interface StoreSettings {

@@ -1,7 +1,11 @@
+
 import { UserProfile, Product, Transaction, Purchase, StoreSettings, Customer, Supplier, CashShift, CashMovement } from '../types';
 import { supabase } from './supabase';
 
 export const StorageService = {
+  // Expose supabase client for direct queries where a service method doesn't exist
+  supabase,
+
   // Session
   saveSession: (user: UserProfile) => localStorage.setItem('churre_session', JSON.stringify(user)),
   getSession: (): UserProfile | null => {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ViewState, StoreSettings, UserProfile } from '../types';
-import { ShoppingCart, Archive, BarChart2, ShoppingBag, LogOut, User, FileText, Settings, Rocket } from 'lucide-react';
+import { ShoppingCart, Archive, BarChart2, ShoppingBag, LogOut, User, FileText, Settings, Rocket, Globe } from 'lucide-react';
 
 interface LayoutProps {
   currentView: ViewState;
@@ -14,10 +14,10 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, settings, user, onLogout, children }) => {
   const storeName = settings?.name || 'Churre POS';
 
-  const NavItem = ({ view, icon: Icon, label }: { view: ViewState; icon: any; label: string }) => (
+  const NavItem = ({ view, icon: Icon, label, badge }: { view: ViewState; icon: any; label: string, badge?: number }) => (
     <button
       onClick={() => onChangeView(view)}
-      className={`group flex flex-col items-center justify-center p-3.5 rounded-2xl transition-all duration-300 w-full mb-3 ${
+      className={`group relative flex flex-col items-center justify-center p-3.5 rounded-2xl transition-all duration-300 w-full mb-3 ${
         currentView === view
           ? 'text-white shadow-lg scale-105'
           : 'bg-white text-slate-400 hover:bg-slate-50 hover:text-slate-600 border border-transparent hover:border-slate-200'
@@ -26,6 +26,11 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, setti
     >
       <Icon className={`w-6 h-6 mb-1.5 transition-transform ${currentView === view ? 'scale-110' : 'group-hover:scale-110'}`} />
       <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
+      {badge ? (
+          <span className="absolute top-1 right-1 bg-white text-brand text-[8px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-md animate-pulse border border-brand/20">
+              {badge}
+          </span>
+      ) : null}
     </button>
   );
 
@@ -54,6 +59,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, setti
 
         <div className="flex-1 w-full px-3 flex flex-col">
           <NavItem view={ViewState.POS} icon={ShoppingCart} label="Venta" />
+          <NavItem view={ViewState.ONLINE_ORDERS} icon={Globe} label="Web" />
           <NavItem view={ViewState.INVENTORY} icon={Archive} label="Stock" />
           <NavItem view={ViewState.PURCHASES} icon={ShoppingBag} label="Compra" />
           {user.role === 'admin' && (
