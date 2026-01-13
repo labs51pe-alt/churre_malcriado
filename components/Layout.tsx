@@ -8,11 +8,11 @@ interface LayoutProps {
   settings: StoreSettings;
   user: UserProfile;
   onLogout: () => void;
-  children: React.Node;
+  children: React.ReactNode;
 }
 
 export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, settings, user, onLogout, children }) => {
-  const brandColor = settings.themeColor || '#4f46e5';
+  const storeName = settings?.name || 'Churre POS';
 
   const NavItem = ({ view, icon: Icon, label }: { view: ViewState; icon: any; label: string }) => (
     <button
@@ -22,7 +22,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, setti
           ? 'text-white shadow-lg scale-105'
           : 'bg-white text-slate-400 hover:bg-slate-50 hover:text-slate-600 border border-transparent hover:border-slate-200'
       }`}
-      style={currentView === view ? { backgroundColor: brandColor, boxShadow: `0 10px 15px -3px ${brandColor}33` } : {}}
+      style={currentView === view ? { backgroundColor: 'var(--brand-primary)', boxShadow: `0 10px 15px -3px var(--brand-medium)` } : {}}
     >
       <Icon className={`w-6 h-6 mb-1.5 transition-transform ${currentView === view ? 'scale-110' : 'group-hover:scale-110'}`} />
       <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
@@ -31,27 +31,24 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, setti
 
   return (
     <div className="flex h-screen bg-[#f8fafc] overflow-hidden">
-      {/* Sidebar Navigation */}
       <div className="w-24 bg-white/80 backdrop-blur-xl border-r border-slate-200 flex flex-col items-center py-6 z-20 shadow-xl shadow-slate-200/50 overflow-y-auto custom-scrollbar">
-        {/* Brand Logo */}
         <div className="flex flex-col items-center mb-8">
             <div 
               className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg transform transition-transform hover:rotate-3 overflow-hidden bg-white"
-              style={{ boxShadow: `0 8px 16px -4px ${brandColor}44` }}
+              style={{ boxShadow: `0 8px 16px -4px var(--brand-medium)` }}
             >
-              {settings.logo ? (
+              {settings?.logo ? (
                 <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: brandColor }}>
+                <div className="w-full h-full flex items-center justify-center bg-brand">
                   <Rocket className="w-6 h-6 text-white" />
                 </div>
               )}
             </div>
             <span 
-               className="text-[10px] font-black mt-2 tracking-tight"
-               style={{ color: brandColor }}
+               className="text-[10px] font-black mt-2 tracking-tight text-center px-1 truncate w-full text-brand"
             >
-              {settings.name.split(' ')[0]}
+              {storeName.split(' ')[0]}
             </span>
         </div>
 
@@ -79,7 +76,6 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, setti
         </div>
       </div>
 
-      {/* Main Content Area */}
       <div className="flex-1 relative overflow-hidden flex flex-col bg-[#f8fafc]">
           {children}
       </div>

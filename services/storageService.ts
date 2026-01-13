@@ -1,101 +1,223 @@
 import { UserProfile, Product, Transaction, Purchase, StoreSettings, Customer, Supplier, CashShift, CashMovement } from '../types';
-import { MOCK_PRODUCTS, DEFAULT_SETTINGS } from '../constants';
-
-const KEYS = {
-  SESSION: 'lumina_session',
-  PRODUCTS: 'lumina_products',
-  TRANSACTIONS: 'lumina_transactions',
-  PURCHASES: 'lumina_purchases',
-  SETTINGS: 'lumina_settings',
-  CUSTOMERS: 'lumina_customers',
-  SUPPLIERS: 'lumina_suppliers',
-  SHIFTS: 'lumina_shifts',
-  MOVEMENTS: 'lumina_movements',
-  ACTIVE_SHIFT_ID: 'lumina_active_shift'
-};
+import { supabase } from './supabase';
 
 export const StorageService = {
-  saveSession: (user: UserProfile) => localStorage.setItem(KEYS.SESSION, JSON.stringify(user)),
+  // Session
+  saveSession: (user: UserProfile) => localStorage.setItem('churre_session', JSON.stringify(user)),
   getSession: (): UserProfile | null => {
-    const s = localStorage.getItem(KEYS.SESSION);
-    return s ? JSON.parse(s) : null;
+    const s = localStorage.getItem('churre_session');
+    try {
+      return s ? JSON.parse(s) : null;
+    } catch {
+      return null;
+    }
   },
-  clearSession: () => localStorage.removeItem(KEYS.SESSION),
+  clearSession: () => localStorage.removeItem('churre_session'),
 
-  getProducts: (): Product[] => {
-    const s = localStorage.getItem(KEYS.PRODUCTS);
-    return s ? JSON.parse(s) : MOCK_PRODUCTS;
-  },
-  saveProducts: (products: Product[]) => localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products)),
-
-  getTransactions: (): Transaction[] => {
-    const s = localStorage.getItem(KEYS.TRANSACTIONS);
-    return s ? JSON.parse(s) : [];
-  },
-  saveTransaction: (transaction: Transaction) => {
-    const current = StorageService.getTransactions();
-    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify([transaction, ...current]));
-  },
-
-  getPurchases: (): Purchase[] => {
-    const s = localStorage.getItem(KEYS.PURCHASES);
-    return s ? JSON.parse(s) : [];
-  },
-  savePurchase: (purchase: Purchase) => {
-    const current = StorageService.getPurchases();
-    localStorage.setItem(KEYS.PURCHASES, JSON.stringify([purchase, ...current]));
-  },
-
-  getSettings: (): StoreSettings => {
-    const s = localStorage.getItem(KEYS.SETTINGS);
-    return s ? JSON.parse(s) : DEFAULT_SETTINGS;
-  },
-  saveSettings: (settings: StoreSettings) => localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings)),
-
-  getCustomers: (): Customer[] => {
-    const s = localStorage.getItem(KEYS.CUSTOMERS);
-    return s ? JSON.parse(s) : [];
+  // Products
+  getProducts: async (): Promise<Product[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('menu_items')
+        .select('*')
+        .order('name');
+      if (error) return [];
+      return data || [];
+    } catch (e) {
+      return [];
+    }
   },
   
-  getSuppliers: (): Supplier[] => {
-    const s = localStorage.getItem(KEYS.SUPPLIERS);
-    return s ? JSON.parse(s) : [];
-  },
-  saveSupplier: (supplier: Supplier) => {
-    const current = StorageService.getSuppliers();
-    localStorage.setItem(KEYS.SUPPLIERS, JSON.stringify([...current, supplier]));
-  },
-
-  getShifts: (): CashShift[] => {
-    const s = localStorage.getItem(KEYS.SHIFTS);
-    return s ? JSON.parse(s) : [];
-  },
-  saveShift: (shift: CashShift) => {
-      const shifts = StorageService.getShifts();
-      // If updating existing
-      const idx = shifts.findIndex(s => s.id === shift.id);
-      if (idx >= 0) {
-          shifts[idx] = shift;
-          localStorage.setItem(KEYS.SHIFTS, JSON.stringify(shifts));
-      } else {
-          localStorage.setItem(KEYS.SHIFTS, JSON.stringify([shift, ...shifts]));
-      }
-  },
-  
-  getMovements: (): CashMovement[] => {
-      const s = localStorage.getItem(KEYS.MOVEMENTS);
-      return s ? JSON.parse(s) : [];
-  },
-  saveMovement: (movement: CashMovement) => {
-      const moves = StorageService.getMovements();
-      localStorage.setItem(KEYS.MOVEMENTS, JSON.stringify([...moves, movement]));
+  saveProduct: async (product: Product) => {
+    const { data, error } = await supabase
+      .from('menu_items')
+      .upsert({
+        id: product.id && product.id.length > 5 ? product.id : undefined,
+        name: product.name,
+        price: product.price,
+        category: product.category,
+        image: product.image,
+        variants: product.variants || [],
+        stock: product.stock,
+        barcode: product.barcode
+      })
+      .select();
+    if (error) throw error;
+    return data ? data[0] : product;
   },
 
-  getActiveShiftId: (): string | null => {
-      return localStorage.getItem(KEYS.ACTIVE_SHIFT_ID);
+  deleteProduct: async (id: string) => {
+    const { error } = await supabase.from('menu_items').delete().eq('id', id);
+    if (error) throw error;
   },
-  setActiveShiftId: (id: string | null) => {
-      if(id) localStorage.setItem(KEYS.ACTIVE_SHIFT_ID, id);
-      else localStorage.removeItem(KEYS.ACTIVE_SHIFT_ID);
+
+  // Orders / Transactions
+  getTransactions: async (): Promise<Transaction[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) return [];
+      return (data || []).map(d => ({
+          ...d,
+          date: d.created_at,
+          items: d.items || [],
+          paymentMethod: d.payment_method,
+          shiftId: d.session_id ? d.session_id.toString() : undefined
+      }));
+    } catch {
+      return [];
+    }
+  },
+
+  saveTransaction: async (transaction: Transaction) => {
+    const { error } = await supabase
+      .from('orders')
+      .insert({
+        customer_name: 'POS Customer',
+        total: transaction.total,
+        modality: 'pickup',
+        status: 'Completado',
+        items: transaction.items,
+        payment_method: transaction.paymentMethod,
+        order_origin: 'POS',
+        session_id: transaction.shiftId ? parseInt(transaction.shiftId) : null
+      });
+    if (error) throw error;
+  },
+
+  // Settings - ACTUALIZADO A pos_settings
+  getSettings: async (): Promise<StoreSettings> => {
+    const defaultSettings: StoreSettings = {
+        name: 'Churre Malcriado POS',
+        currency: 'S/',
+        taxRate: 0.18,
+        pricesIncludeTax: true,
+        themeColor: '#e11d48'
+    };
+    try {
+      const { data, error } = await supabase
+        .from('pos_settings')
+        .select('*')
+        .eq('id', 1)
+        .single();
+      if (error) return defaultSettings;
+      return data || defaultSettings;
+    } catch {
+      return defaultSettings;
+    }
+  },
+
+  saveSettings: async (settings: StoreSettings) => {
+    const { error } = await supabase
+      .from('pos_settings')
+      .upsert({ id: 1, ...settings });
+    if (error) throw error;
+  },
+
+  // Cash Sessions
+  getShifts: async (): Promise<CashShift[]> => {
+    try {
+      const { data, error } = await supabase.from('cash_sessions').select('*').order('id', { ascending: false });
+      if (error) return [];
+      return (data || []).map(d => ({
+          id: d.id.toString(),
+          startTime: d.opened_at,
+          endTime: d.closed_at,
+          startAmount: d.opening_balance,
+          endAmount: d.closing_balance,
+          status: d.status.toUpperCase() as 'OPEN' | 'CLOSED',
+          totalSalesCash: d.total_sales || 0,
+          totalSalesDigital: 0 
+      }));
+    } catch {
+      return [];
+    }
+  },
+
+  saveShift: async (shift: CashShift) => {
+    const payload = {
+        opened_at: shift.startTime,
+        closed_at: shift.endTime,
+        opening_balance: shift.startAmount,
+        closing_balance: shift.endAmount,
+        status: shift.status.toLowerCase()
+    };
+    let result;
+    if (shift.id && !shift.id.includes('.')) {
+        result = await supabase.from('cash_sessions').upsert({ id: parseInt(shift.id), ...payload }).select();
+    } else {
+        result = await supabase.from('cash_sessions').insert(payload).select();
+    }
+    if (result.error) throw result.error;
+    const d = result.data[0];
+    return {
+        id: d.id.toString(),
+        startTime: d.opened_at,
+        endTime: d.closed_at,
+        startAmount: d.opening_balance,
+        endAmount: d.closing_balance,
+        status: d.status.toUpperCase()
+    };
+  },
+
+  // Cash Movements
+  getMovements: async (): Promise<CashMovement[]> => {
+    try {
+      const { data, error } = await supabase.from('cash_transactions').select('*').order('created_at', { ascending: false });
+      if (error) return [];
+      return (data || []).map(d => ({
+          id: d.id.toString(),
+          shiftId: d.session_id ? d.session_id.toString() : '0',
+          type: d.type.toUpperCase() as any,
+          amount: d.amount,
+          description: d.reason || '',
+          timestamp: d.created_at
+      }));
+    } catch {
+      return [];
+    }
+  },
+
+  saveMovement: async (movement: CashMovement) => {
+    const { error } = await supabase.from('cash_transactions').insert({
+        session_id: movement.shiftId ? parseInt(movement.shiftId) : null,
+        type: movement.type.toLowerCase(),
+        amount: movement.amount,
+        reason: movement.description,
+        created_at: movement.timestamp
+    });
+    if (error) throw error;
+  },
+
+  getSuppliers: async () => {
+    try {
+      const { data, error } = await supabase.from('suppliers').select('*');
+      if (error) return [];
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+
+  saveSupplier: async (supplier: Supplier) => {
+    const { error } = await supabase.from('suppliers').insert(supplier);
+    if (error) throw error;
+  },
+
+  getPurchases: async () => {
+    try {
+      const { data, error } = await supabase.from('purchases').select('*').order('date', { ascending: false });
+      if (error) return [];
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+
+  savePurchase: async (purchase: Purchase) => {
+    const { error } = await supabase.from('purchases').insert(purchase);
+    if (error) throw error;
   }
 };

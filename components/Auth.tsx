@@ -22,7 +22,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [godError, setGodError] = useState('');
 
   useEffect(() => {
-    setSettings(StorageService.getSettings());
+    const loadSettings = async () => {
+      const s = await StorageService.getSettings();
+      setSettings(s);
+    };
+    loadSettings();
   }, []);
 
   const handleLogoClick = () => {
@@ -58,7 +62,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const handleLoginSubmit = () => {
     setLoading(true);
     setTimeout(() => {
-      // PIN 2626 es ahora el acceso real principal
       if (accessCode === '2626' || accessCode === '1234' || accessCode === '2025') {
           onLogin({ id: 'admin-001', name: 'Administrador Churre', role: 'admin' });
       } else {
@@ -81,18 +84,18 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   const brandColor = settings?.themeColor || '#e11d48';
+  const storeTitle = settings?.name || 'Churre Malcriado';
+  const nameParts = storeTitle.split(' ');
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0f172a] font-inter overflow-hidden relative selection:bg-rose-500 selection:text-white">
         
-        {/* DYNAMIC BACKGROUND WITH BRAND COLORS */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute top-[-10%] left-[-10%] w-[70vw] h-[70vw] rounded-full blur-[120px] animate-pulse opacity-20" style={{ backgroundColor: brandColor }}></div>
             <div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-amber-500/10 rounded-full blur-[120px]"></div>
         </div>
 
         <div className="w-full max-w-lg p-6 relative z-10">
-            {/* BRANDING */}
             <div className="text-center mb-10 animate-fade-in">
                 <button 
                   onClick={handleLogoClick}
@@ -105,12 +108,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     )}
                 </button>
                 <h1 className="text-4xl font-black text-white tracking-tighter mb-2">
-                   {settings?.name.split(' ')[0] || 'Churre'}<span style={{ color: brandColor }}>{settings?.name.split(' ')[1] || 'Malcriado'}</span>
+                   {nameParts[0]}<span style={{ color: brandColor }}>{nameParts[1] || ''}</span>
                 </h1>
                 <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.3em]">Sanguchería Piurana • POS System</p>
             </div>
 
-            {/* LOGIN CARD */}
             <div className={`
                 bg-white/10 backdrop-blur-3xl border border-white/10 p-10 rounded-[4rem] shadow-[0_32px_64px_-15px_rgba(0,0,0,0.5)] 
                 transition-all duration-300 
@@ -118,7 +120,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 ${loading ? 'opacity-50 scale-95' : 'scale-100'}
             `}>
                 
-                {/* PIN INDICATORS */}
                 <div className="flex justify-center gap-6 mb-12">
                     {[0, 1, 2, 3].map((i) => (
                         <div 
@@ -134,7 +135,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     ))}
                 </div>
 
-                {/* NUMPAD */}
                 <div className="grid grid-cols-3 gap-4 mb-8">
                     {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
                         <button
@@ -165,7 +165,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     </button>
                 </div>
 
-                {/* STATUS BAR */}
                 <div className="text-center">
                     {loading ? (
                         <div className="flex items-center justify-center gap-3 font-bold uppercase text-[10px] tracking-widest animate-pulse" style={{ color: brandColor }}>
@@ -187,7 +186,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </div>
         </div>
 
-        {/* GOD MODE MODAL */}
         {showGodMode && (
              <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-3xl z-[100] flex items-center justify-center p-8 animate-fade-in">
                  <div className="bg-slate-900 w-full max-w-sm rounded-[3rem] p-10 shadow-2xl animate-fade-in-up text-center border border-white/10">

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ViewState, Product, CartItem, Transaction, StoreSettings, Purchase, CashShift, CashMovement, UserProfile, Customer, Supplier } from './types';
 import { StorageService } from './services/storageService';
 import { Layout } from './components/Layout';
-import { Cart } from './components/Cart';
 import { Ticket } from './components/Ticket';
 import { Auth } from './components/Auth';
 import { AdminView } from './components/AdminView';
@@ -13,11 +12,12 @@ import { SettingsView } from './components/SettingsView';
 import { CashControlModal } from './components/CashControlModal';
 import { POSView } from './components/POSView';
 import { DEFAULT_SETTINGS, CATEGORIES } from './constants';
-import { Plus, LogOut } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [view, setView] = useState<ViewState>(ViewState.POS);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   // Data
   const [products, setProducts] = useState<Product[]>([]);
@@ -39,43 +39,60 @@ const App: React.FC = () => {
   const [ticketType, setTicketType] = useState<'SALE' | 'REPORT'>('SALE');
   const [ticketData, setTicketData] = useState<any>(null);
   const [initialPurchaseSearch, setInitialPurchaseSearch] = useState('');
-  
-  // Product Form State
-  const [variantName, setVariantName] = useState('');
-  const [variantPrice, setVariantPrice] = useState('');
-  const [variantStock, setVariantStock] = useState('');
 
-  // Initial Load
+  // Inyectar variables de color dinámicas basadas en Settings
+  useEffect(() => {
+    const brand = settings.themeColor || '#e11d48';
+    document.documentElement.style.setProperty('--brand-primary', brand);
+    document.documentElement.style.setProperty('--brand-soft', `${brand}15`);
+    document.documentElement.style.setProperty('--brand-medium', `${brand}44`);
+  }, [settings.themeColor]);
+
+  const loadData = async () => {
+    try {
+        const [p, t, pur, s, sh, mv, setts] = await Promise.all([
+            StorageService.getProducts(),
+            StorageService.getTransactions(),
+            StorageService.getPurchases(),
+            StorageService.getSuppliers(),
+            StorageService.getShifts(),
+            StorageService.getMovements(),
+            StorageService.getSettings()
+        ]);
+        setProducts(p);
+        setTransactions(t);
+        setPurchases(pur);
+        setSuppliers(s);
+        setShifts(sh);
+        setMovements(mv);
+        setSettings(setts);
+        
+        const openShift = sh.find(s => s.status === 'OPEN');
+        if (openShift) setActiveShiftId(openShift.id);
+        
+        setIsInitializing(false);
+    } catch (error) {
+        console.error("Error loading data from Supabase:", error);
+        setIsInitializing(false);
+    }
+  };
+
   useEffect(() => {
     const savedUser = StorageService.getSession();
-    if (savedUser) { 
-        setUser(savedUser); 
-        setView(ViewState.POS); 
-    }
-    setProducts(StorageService.getProducts());
-    setTransactions(StorageService.getTransactions());
-    setPurchases(StorageService.getPurchases());
-    setSettings(StorageService.getSettings());
-    setCustomers(StorageService.getCustomers());
-    setSuppliers(StorageService.getSuppliers());
-    setShifts(StorageService.getShifts());
-    setMovements(StorageService.getMovements());
-    setActiveShiftId(StorageService.getActiveShiftId());
+    if (savedUser) setUser(savedUser);
+    loadData();
   }, []);
 
   const activeShift = useMemo(() => shifts.find(s => s.id === activeShiftId), [shifts, activeShiftId]);
 
-  // Handlers
   const handleLogin = (loggedInUser: UserProfile) => {
     setUser(loggedInUser); 
     StorageService.saveSession(loggedInUser);
-    setView(ViewState.POS);
   };
 
   const handleLogout = () => { 
       setUser(null); 
       StorageService.clearSession(); 
-      setView(ViewState.POS); 
       setCart([]); 
   };
 
@@ -113,11 +130,9 @@ const App: React.FC = () => {
       setCart(prev => prev.map(item => (item.id === id && item.selectedVariantId === variantId) ? { ...item, discount } : item)); 
   };
   
-  const handleCheckout = (method: any, payments: any[]) => {
-      if(!activeShift) {
-        alert("Debes abrir un turno para realizar ventas.");
-        return;
-      }
+  const handleCheckout = async (method: any, payments: any[]) => {
+      if(!activeShift) return alert("Abre un turno primero.");
+      
       const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       const totalDiscount = cart.reduce((sum, item) => sum + ((item.discount || 0) * item.quantity), 0);
       const total = Math.max(0, subtotal - totalDiscount);
@@ -137,9 +152,7 @@ const App: React.FC = () => {
           shiftId: activeShift.id 
       };
       
-      const newTransactions = [transaction, ...transactions]; 
-      setTransactions(newTransactions); 
-      StorageService.saveTransaction(transaction);
+      await StorageService.saveTransaction(transaction);
       
       const newProducts = products.map(p => { 
           const cartItems = cart.filter(c => c.id === p.id); 
@@ -154,20 +167,22 @@ const App: React.FC = () => {
               } 
           }); 
           if (p.hasVariants) newStock = newVariants.reduce((sum,v) => sum + v.stock, 0); 
-          return { ...p, stock: newStock, variants: newVariants }; 
+          const updatedP = { ...p, stock: newStock, variants: newVariants };
+          StorageService.saveProduct(updatedP);
+          return updatedP;
       }); 
       
-      setProducts(newProducts); 
-      StorageService.saveProducts(newProducts);
+      setProducts(newProducts);
+      setTransactions([transaction, ...transactions]);
       setCart([]); 
       setTicketType('SALE'); 
       setTicketData(transaction); 
       setShowTicket(true);
   };
 
-  const handleCashAction = (action: 'OPEN' | 'CLOSE' | 'IN' | 'OUT', amount: number, description: string) => {
+  const handleCashAction = async (action: 'OPEN' | 'CLOSE' | 'IN' | 'OUT', amount: number, description: string) => {
       if (action === 'OPEN') {
-          const newShift: CashShift = { 
+          const newShiftObj: CashShift = { 
               id: Date.now().toString(), 
               startTime: new Date().toISOString(), 
               startAmount: amount, 
@@ -175,16 +190,25 @@ const App: React.FC = () => {
               totalSalesCash: 0, 
               totalSalesDigital: 0 
           };
-          StorageService.saveShift(newShift); 
-          StorageService.setActiveShiftId(newShift.id); 
-          setShifts([newShift, ...shifts]); 
-          setActiveShiftId(newShift.id);
+          const savedShift = await StorageService.saveShift(newShiftObj);
+          const shiftId = savedShift.id.toString();
+          setActiveShiftId(shiftId); 
+          setShifts([{ ...newShiftObj, id: shiftId }, ...shifts]); 
+          
+          const move: CashMovement = { id: Date.now().toString(), shiftId, type: 'OPEN', amount, description: 'Apertura de Caja', timestamp: new Date().toISOString() };
+          await StorageService.saveMovement(move);
+          setMovements([move, ...movements]);
+
       } else if (action === 'CLOSE' && activeShift) {
           const closedShift = { ...activeShift, endTime: new Date().toISOString(), endAmount: amount, status: 'CLOSED' as const };
-          StorageService.saveShift(closedShift); 
-          StorageService.setActiveShiftId(null); 
+          await StorageService.saveShift(closedShift); 
           setShifts(shifts.map(s => s.id === activeShift.id ? closedShift : s)); 
           setActiveShiftId(null);
+          
+          const move: CashMovement = { id: Date.now().toString(), shiftId: activeShift.id, type: 'CLOSE', amount, description: 'Cierre de Caja', timestamp: new Date().toISOString() };
+          await StorageService.saveMovement(move);
+          setMovements([move, ...movements]);
+
           setTicketType('REPORT'); 
           setTicketData({ 
               shift: closedShift, 
@@ -192,254 +216,122 @@ const App: React.FC = () => {
               transactions: transactions.filter(t => t.shiftId === activeShift.id) 
           }); 
           setShowTicket(true);
-      }
-      
-      if (activeShift || action === 'OPEN') {
-          const currentId = activeShift ? activeShift.id : (action === 'OPEN' ? (shifts[0]?.id || Date.now().toString()) : ''); 
-          const actualId = action === 'OPEN' ? shifts[0]?.id || Date.now().toString() : currentId;
-          
-          if(actualId) { 
-              const move: CashMovement = { 
-                  id: Date.now().toString(), 
-                  shiftId: actualId, 
-                  type: action, 
-                  amount, 
-                  description, 
-                  timestamp: new Date().toISOString() 
-              }; 
-              StorageService.saveMovement(move); 
-              setMovements([...movements, move]); 
-          }
+      } else if (activeShift) {
+          const move: CashMovement = { id: Date.now().toString(), shiftId: activeShift.id, type: action, amount, description, timestamp: new Date().toISOString() };
+          await StorageService.saveMovement(move);
+          setMovements([move, ...movements]);
       }
   };
 
-  const handleSaveProduct = () => {
+  const handleSaveProduct = async () => {
       if (!currentProduct?.name) return;
-      let pToSave = { ...currentProduct };
-      if (pToSave.hasVariants && pToSave.variants) pToSave.stock = pToSave.variants.reduce((acc, v) => acc + (Number(v.stock) || 0), 0);
-      let updated; 
-      if (products.find(p => p.id === pToSave.id)) updated = products.map(p => p.id === pToSave.id ? pToSave : p); 
-      else updated = [...products, { ...pToSave, id: Date.now().toString() }];
+      const savedP = await StorageService.saveProduct(currentProduct);
+      const updated = products.find(p => p.id === savedP.id) 
+        ? products.map(p => p.id === savedP.id ? savedP : p) 
+        : [...products, savedP];
       setProducts(updated); 
-      StorageService.saveProducts(updated); 
       setIsProductModalOpen(false);
   };
   
-  const handleProcessPurchase = (purchase: Purchase, updatedProducts: Product[]) => {
-      setPurchases([purchase, ...purchases]);
-      setProducts(updatedProducts);
-      StorageService.savePurchase(purchase);
-      StorageService.saveProducts(updatedProducts);
-  };
-  
-  const handleAddSupplier = (supplier: Supplier) => {
-      setSuppliers([...suppliers, supplier]);
-      StorageService.saveSupplier(supplier);
+  const handleUpdateSettings = async (newSettings: StoreSettings) => {
+      await StorageService.saveSettings(newSettings);
+      setSettings(newSettings);
   };
 
-  const handleUpdateSettings = (newSettings: StoreSettings) => {
-      setSettings(newSettings);
-      StorageService.saveSettings(newSettings);
-  };
-  
-  const handleGoToPurchase = (productName: string) => {
-      setInitialPurchaseSearch(productName);
-      setView(ViewState.PURCHASES);
-  };
+  if (isInitializing) return (
+    <div className="h-screen flex flex-col items-center justify-center bg-[#fef2f2] animate-fade-in">
+        <div className="w-20 h-20 rounded-3xl flex items-center justify-center animate-bounce shadow-2xl" style={{ backgroundColor: 'var(--brand-primary)' }}>
+            <RefreshCw className="w-10 h-10 text-white animate-spin" />
+        </div>
+        <p className="mt-6 font-black uppercase tracking-widest text-xs" style={{ color: 'var(--brand-primary)' }}>Conectando con Churre Cloud...</p>
+    </div>
+  );
 
   if (!user) return <Auth onLogin={handleLogin} />;
 
   return (
-    <Layout currentView={view} onChangeView={setView} settings={settings} user={user} onLogout={handleLogout}>
-        {view === ViewState.POS && (
-            <POSView 
-                products={products} 
-                cart={cart} 
-                activeShift={activeShift} 
-                settings={settings} 
-                customers={customers} 
-                onAddToCart={handleAddToCart} 
-                onUpdateCart={handleUpdateCartQuantity} 
-                onRemoveFromCart={handleRemoveFromCart} 
-                onUpdateDiscount={handleUpdateDiscount} 
-                onCheckout={handleCheckout} 
-                onClearCart={() => setCart([])} 
-                onOpenCashControl={(action: 'OPEN'|'IN'|'OUT'|'CLOSE') => setShowCashControl(true)} 
-            />
-        )}
-
-        {view === ViewState.INVENTORY && (
-            <InventoryView 
-                products={products} 
-                settings={settings} 
-                transactions={transactions}
-                purchases={purchases}
-                onNewProduct={() => { 
-                    setCurrentProduct({ id: '', name: '', price: 0, category: CATEGORIES[0], stock: 0, variants: [] }); 
-                    setIsProductModalOpen(true); 
-                }} 
-                onEditProduct={(p) => { 
-                    setCurrentProduct(p); 
-                    setIsProductModalOpen(true); 
-                }} 
-                onDeleteProduct={(id) => { 
-                    if(window.confirm('¿Estás seguro de eliminar este producto?')) { 
-                        const up = products.filter(p => p.id !== id); 
-                        setProducts(up); 
-                        StorageService.saveProducts(up); 
-                    } 
-                }} 
-                onGoToPurchase={handleGoToPurchase}
-            />
-        )}
+    <div className="pos-app">
+        <style>{`
+            :root {
+                --brand-primary: ${settings.themeColor || '#e11d48'};
+                --brand-soft: ${(settings.themeColor || '#e11d48')}15;
+                --brand-medium: ${(settings.themeColor || '#e11d48')}44;
+            }
+            .text-brand { color: var(--brand-primary); }
+            .bg-brand { background-color: var(--brand-primary); }
+            .bg-brand-soft { background-color: var(--brand-soft); }
+            .border-brand { border-color: var(--brand-primary); }
+            .ring-brand { --tw-ring-color: var(--brand-soft); }
+        `}</style>
         
-        {view === ViewState.PURCHASES && (
-            <PurchasesView 
-                products={products}
-                suppliers={suppliers}
-                purchases={purchases}
-                settings={settings}
-                onProcessPurchase={handleProcessPurchase}
-                onAddSupplier={handleAddSupplier}
-                onRequestNewProduct={(barcode) => {
-                    setCurrentProduct({ 
-                        id: '', 
-                        name: '', 
-                        price: 0, 
-                        category: CATEGORIES[0], 
-                        stock: 0, 
-                        variants: [], 
-                        barcode: barcode || '' 
-                    });
-                    setIsProductModalOpen(true);
-                }}
-                initialSearchTerm={initialPurchaseSearch}
-                onClearInitialSearch={() => setInitialPurchaseSearch('')}
-            />
-        )}
+        <Layout currentView={view} onChangeView={setView} settings={settings} user={user} onLogout={handleLogout}>
+            {view === ViewState.POS && (
+                <POSView 
+                    products={products} cart={cart} activeShift={activeShift} settings={settings} customers={customers} 
+                    onAddToCart={handleAddToCart} onUpdateCart={handleUpdateCartQuantity} onRemoveFromCart={handleRemoveFromCart} 
+                    onUpdateDiscount={handleUpdateDiscount} onCheckout={handleCheckout} onClearCart={() => setCart([])} 
+                    onOpenCashControl={(action: any) => setShowCashControl(true)} 
+                />
+            )}
+            {view === ViewState.INVENTORY && (
+                <InventoryView 
+                    products={products} settings={settings} transactions={transactions} purchases={purchases}
+                    onNewProduct={() => { setCurrentProduct({ id: '', name: '', price: 0, category: CATEGORIES[0], stock: 0, variants: [] }); setIsProductModalOpen(true); }} 
+                    onEditProduct={(p) => { setCurrentProduct(p); setIsProductModalOpen(true); }} 
+                    onDeleteProduct={async (id) => { if(confirm('¿Eliminar?')) { await StorageService.deleteProduct(id); setProducts(products.filter(p => p.id !== id)); } }} 
+                    onGoToPurchase={(name) => { setInitialPurchaseSearch(name); setView(ViewState.PURCHASES); }}
+                />
+            )}
+            {view === ViewState.PURCHASES && (
+                <PurchasesView 
+                    products={products} suppliers={suppliers} purchases={purchases} settings={settings}
+                    onProcessPurchase={async (p, up) => { await StorageService.savePurchase(p); setPurchases([p, ...purchases]); setProducts(up); }}
+                    onAddSupplier={async (s) => { await StorageService.saveSupplier(s); setSuppliers([...suppliers, s]); }}
+                    onRequestNewProduct={(barcode) => { setCurrentProduct({ id: '', name: '', price: 0, category: CATEGORIES[0], stock: 0, variants: [], barcode: barcode || '' }); setIsProductModalOpen(true); }}
+                    initialSearchTerm={initialPurchaseSearch} onClearInitialSearch={() => setInitialPurchaseSearch('')}
+                />
+            )}
+            {view === ViewState.ADMIN && <AdminView transactions={transactions} products={products} shifts={shifts} movements={movements} settings={settings} />}
+            {view === ViewState.REPORTS && <ReportsView transactions={transactions} settings={settings} />}
+            {view === ViewState.SETTINGS && <SettingsView settings={settings} onSaveSettings={handleUpdateSettings} />}
 
-        {view === ViewState.ADMIN && (
-            <AdminView 
-              transactions={transactions} 
-              products={products} 
-              shifts={shifts} 
-              movements={movements} 
-            />
-        )}
-
-        {view === ViewState.REPORTS && (
-            <ReportsView 
-                transactions={transactions}
-                settings={settings}
-            />
-        )}
-
-        {view === ViewState.SETTINGS && (
-            <SettingsView 
-                settings={settings}
-                onSaveSettings={handleUpdateSettings}
-            />
-        )}
-
-        <CashControlModal 
-            isOpen={showCashControl} 
-            onClose={() => setShowCashControl(false)} 
-            activeShift={activeShift} 
-            movements={movements} 
-            transactions={transactions} 
-            onCashAction={handleCashAction} 
-            currency={settings.currency} 
-        />
-        
-        {isProductModalOpen && currentProduct && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-                <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col animate-fade-in-up">
-                    <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                        <h2 className="font-black text-xl text-slate-800">{currentProduct.id ? 'Editar Producto' : 'Nuevo Producto'}</h2>
-                        <button onClick={() => setIsProductModalOpen(false)} className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-red-500 hover:border-red-200 transition-colors">✕</button>
-                    </div>
-                    <div className="p-8 overflow-y-auto custom-scrollbar">
-                        <div className="space-y-5">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Nombre del Producto</label>
-                                <input className="w-full p-4 bg-slate-50 border border-slate-200 focus:border-slate-800 rounded-2xl font-bold text-lg outline-none transition-all" value={currentProduct.name} onChange={e => setCurrentProduct({...currentProduct!, name: e.target.value})} placeholder="Ej. Coca Cola 600ml"/>
-                            </div>
-                             <div>
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Código de Barras</label>
-                                <input className="w-full p-4 bg-slate-50 border border-slate-200 focus:border-slate-800 rounded-2xl font-bold outline-none" value={currentProduct.barcode || ''} onChange={e => setCurrentProduct({...currentProduct!, barcode: e.target.value})} placeholder="Escanear o escribir..." autoFocus={!currentProduct.id}/>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
+            <CashControlModal isOpen={showCashControl} onClose={() => setShowCashControl(false)} activeShift={activeShift} movements={movements} transactions={transactions} onCashAction={handleCashAction} currency={settings.currency} />
+            
+            {isProductModalOpen && currentProduct && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col animate-fade-in-up">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <h2 className="font-black text-xl text-slate-800">{currentProduct.id ? 'Editar Producto' : 'Nuevo Producto'}</h2>
+                            <button onClick={() => setIsProductModalOpen(false)} className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-red-500 hover:border-red-200 transition-colors">✕</button>
+                        </div>
+                        <div className="p-8 overflow-y-auto custom-scrollbar">
+                            <div className="space-y-5">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Precio Venta</label>
-                                    <input type="number" className="w-full p-4 bg-slate-50 border border-slate-200 focus:border-slate-800 rounded-2xl font-bold outline-none" value={currentProduct.price || ''} onChange={e => setCurrentProduct({...currentProduct!, price: parseFloat(e.target.value)})} placeholder="0.00"/>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Nombre del Producto</label>
+                                    <input className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-lg outline-none focus:border-brand" value={currentProduct.name} onChange={e => setCurrentProduct({...currentProduct!, name: e.target.value})} />
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Stock Actual</label>
-                                    <input type="number" className="w-full p-4 bg-slate-50 border border-slate-200 focus:border-slate-800 rounded-2xl font-bold outline-none disabled:opacity-50" value={currentProduct.stock || ''} onChange={e => setCurrentProduct({...currentProduct!, stock: parseFloat(e.target.value)})} placeholder="0" disabled={currentProduct.hasVariants}/>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Categoría</label>
-                                <select className="w-full p-4 bg-slate-50 border border-slate-200 focus:border-slate-800 rounded-2xl font-bold outline-none" value={currentProduct.category} onChange={e => setCurrentProduct({...currentProduct!, category: e.target.value})}>
-                                    {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                                </select>
-                            </div>
-                            <div className="pt-2">
-                                <label className="flex items-center gap-3 p-4 border border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-50 transition-colors">
-                                    <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-colors ${currentProduct.hasVariants ? 'bg-slate-900 border-slate-900' : 'border-slate-300'}`}>
-                                        {currentProduct.hasVariants && <Plus className="w-4 h-4 text-white" />}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Precio Venta</label>
+                                        <input type="number" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold focus:border-brand" value={currentProduct.price || ''} onChange={e => setCurrentProduct({...currentProduct!, price: parseFloat(e.target.value)})} />
                                     </div>
-                                    <input type="checkbox" className="hidden" checked={currentProduct.hasVariants || false} onChange={e => setCurrentProduct({...currentProduct!, hasVariants: e.target.checked})} /> 
-                                    <span className="font-bold text-slate-700">Este producto tiene variantes</span>
-                                </label>
-                            </div>
-                            
-                            {currentProduct.hasVariants && (
-                                <div className="bg-slate-50 p-6 rounded-[1.5rem] border border-slate-200">
-                                    <h4 className="font-bold text-slate-800 mb-4 text-sm">Gestionar Variantes</h4>
-                                    <div className="flex gap-2 mb-4">
-                                        <input className="flex-[2] p-3 rounded-xl border border-slate-200 text-sm font-bold" placeholder="Ej. Grande" value={variantName} onChange={e => setVariantName(e.target.value)}/>
-                                        <input className="flex-1 p-3 rounded-xl border border-slate-200 text-sm font-bold" placeholder="Precio" type="number" value={variantPrice} onChange={e => setVariantPrice(e.target.value)}/>
-                                        <input className="w-20 p-3 rounded-xl border border-slate-200 text-sm font-bold" placeholder="Cant." type="number" value={variantStock} onChange={e => setVariantStock(e.target.value)}/>
-                                        <button onClick={() => { 
-                                            if(!currentProduct) return; 
-                                            const newVar = { id: Date.now().toString(), name: variantName, price: parseFloat(variantPrice) || 0, stock: parseFloat(variantStock) || 0 }; 
-                                            const newVars = [...(currentProduct.variants || []), newVar]; 
-                                            setCurrentProduct({ ...currentProduct, variants: newVars, stock: newVars.reduce((s,v)=>s+v.stock,0) }); 
-                                            setVariantName(''); setVariantPrice(''); setVariantStock(''); 
-                                        }} className="bg-slate-900 text-white p-3 rounded-xl hover:bg-black transition-colors"><Plus className="w-5 h-5"/></button>
-                                    </div>
-                                    <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                                        {currentProduct.variants?.map((v, i) => (
-                                            <div key={i} className="flex justify-between items-center p-3 bg-white rounded-xl border border-slate-100 shadow-sm">
-                                                <span className="font-bold text-slate-700 text-sm">{v.name}</span>
-                                                <div className="text-xs text-slate-500 font-medium bg-slate-100 px-2 py-1 rounded-lg">
-                                                    {v.stock} un. • ${v.price}
-                                                </div>
-                                            </div>
-                                        ))}
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Stock</label>
+                                        <input type="number" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold focus:border-brand" value={currentProduct.stock || ''} onChange={e => setCurrentProduct({...currentProduct!, stock: parseFloat(e.target.value)})} disabled={currentProduct.hasVariants} />
                                     </div>
                                 </div>
-                            )}
+                            </div>
+                        </div>
+                        <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50/50">
+                            <button onClick={() => setIsProductModalOpen(false)} className="px-6 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
+                            <button onClick={handleSaveProduct} className="px-8 py-3 bg-brand text-white rounded-xl font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all">Guardar en la Nube</button>
                         </div>
                     </div>
-                    <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50/50">
-                        <button onClick={() => setIsProductModalOpen(false)} className="px-6 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
-                        <button onClick={handleSaveProduct} className="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all">Guardar Producto</button>
-                    </div>
                 </div>
-            </div>
-        )}
-        
-        {showTicket && ticketData && (
-            <Ticket 
-                type={ticketType} 
-                data={ticketData} 
-                settings={settings} 
-                onClose={() => setShowTicket(false)} 
-            />
-        )}
-    </Layout>
+            )}
+            {showTicket && ticketData && <Ticket type={ticketType} data={ticketData} settings={settings} onClose={() => setShowTicket(false)} />}
+        </Layout>
+    </div>
   );
 };
 
