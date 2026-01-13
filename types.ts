@@ -1,0 +1,120 @@
+export enum ViewState {
+  POS,
+  ADMIN,
+  INVENTORY,
+  PURCHASES,
+  REPORTS,
+  SETTINGS
+}
+
+export interface ProductVariant {
+  id: string;
+  name: string;
+  price: number;
+  stock: number;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+  stock: number;
+  barcode?: string;
+  hasVariants?: boolean;
+  variants?: ProductVariant[];
+  image?: string;
+}
+
+export interface CartItem extends Product {
+  quantity: number;
+  selectedVariantId?: string;
+  selectedVariantName?: string;
+  discount?: number;
+}
+
+export type PaymentMethod = 'cash' | 'card' | 'yape' | 'plin' | 'transfer';
+
+export interface PaymentDetail {
+  method: PaymentMethod;
+  amount: number;
+}
+
+export interface Transaction {
+  id: string;
+  date: string;
+  items: CartItem[];
+  subtotal: number;
+  tax: number;
+  discount: number;
+  total: number;
+  paymentMethod: string;
+  payments?: PaymentDetail[];
+  profit: number;
+  shiftId?: string;
+}
+
+export interface StoreSettings {
+  name: string;
+  currency: string;
+  taxRate: number;
+  pricesIncludeTax: boolean;
+  address?: string;
+  phone?: string;
+  logo?: string; // Base64 string
+  themeColor?: string; // Hex string
+}
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  role: 'admin' | 'cashier';
+  pin?: string;
+}
+
+export interface CashShift {
+  id: string;
+  startTime: string;
+  endTime?: string;
+  startAmount: number;
+  endAmount?: number;
+  status: 'OPEN' | 'CLOSED';
+  totalSalesCash: number;
+  totalSalesDigital: number;
+}
+
+export interface CashMovement {
+  id: string;
+  shiftId: string;
+  type: 'OPEN' | 'CLOSE' | 'IN' | 'OUT';
+  amount: number;
+  description: string;
+  timestamp: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  contact?: string;
+}
+
+export interface PurchaseItem {
+  productId: string;
+  quantity: number;
+  cost: number;
+}
+
+export interface Purchase {
+  id: string;
+  date: string;
+  supplierId: string;
+  total: number;
+  items: PurchaseItem[];
+}
