@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { CartItem, StoreSettings, Customer, PaymentMethod, PaymentDetail } from '../types';
-import { Trash2, CreditCard, Banknote, Minus, Plus, ShoppingBag, X, Smartphone, Check, Wand2, ShieldCheck } from 'lucide-react';
+import { Trash2, CreditCard, Banknote, Minus, Plus, ShoppingBag, X, Smartphone, Check, Wand2, ShieldCheck, DollarSign } from 'lucide-react';
 
 interface CartProps {
   items: CartItem[];
@@ -15,33 +16,87 @@ interface CartProps {
 
 export const Cart: React.FC<CartProps> = ({ items, onUpdateQuantity, onRemoveItem, onCheckout, onClearCart, settings }) => {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [payAmounts, setPayAmounts] = useState<{ [key in PaymentMethod]?: string }>({ cash: '', yape: '', plin: '', card: '' });
+  const [payAmounts, setPayAmounts] = useState<{ [key in PaymentMethod]?: string }>({ 
+    cash: '', 
+    yape: '', 
+    card: '' 
+  });
 
   const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const totalDiscount = items.reduce((sum, item) => sum + ((item.discount || 0) * item.quantity), 0);
   const total = Math.max(0, subtotal - totalDiscount);
-  const tax = settings.pricesIncludeTax ? (total - (total / (1 + settings.taxRate))) : (total * settings.taxRate);
   
-  const totalPaid = Object.values(payAmounts).reduce<number>((acc, val) => acc + (parseFloat((val as string) || '0') || 0), 0);
+  // Fix: Explicitly check type of val before passing to parseFloat to avoid 'unknown' type errors
+  const totalPaid = Object.values(payAmounts).reduce<number>((acc, val) => {
+    const amountStr = typeof val === 'string' ? val : '0';
+    return acc + (parseFloat(amountStr) || 0);
+  }, 0);
   const remaining = Math.max(0, total - totalPaid);
   const change = Math.max(0, totalPaid - total);
 
   const fillRemaining = (method: PaymentMethod) => {
-      const currentVal = parseFloat(payAmounts[method] || '0');
-      const newVal = (currentVal + remaining).toFixed(2);
-      setPayAmounts(prev => ({ ...prev, [method]: newVal }));
+      // Fix: Explicitly check type of val before passing to parseFloat to avoid 'unknown' type errors
+      const currentOtherPaid = Object.entries(payAmounts)
+        .filter(([key]) => key !== method)
+        .reduce((acc, [_, val]) => {
+          const amountStr = typeof val === 'string' ? val : '0';
+          return acc + (parseFloat(amountStr) || 0);
+        }, 0);
+      
+      const needed = Math.max(0, total - currentOtherPaid);
+      setPayAmounts(prev => ({ ...prev, [method]: needed.toFixed(2) }));
   };
 
   const confirmPayment = () => {
       if (totalPaid < total - 0.01) return alert('Falta cubrir el monto total');
       const payments: PaymentDetail[] = [];
+      
       (Object.keys(payAmounts) as PaymentMethod[]).forEach(method => {
           const rawAmount = parseFloat(payAmounts[method] || '0');
-          if (rawAmount > 0) payments.push({ method, amount: method === 'cash' && change > 0 ? rawAmount - change : rawAmount });
+          if (rawAmount > 0) {
+              // Si es efectivo y hay vuelto, registramos solo lo que cubrió la venta
+              const finalAmount = (method === 'cash' && change > 0) ? rawAmount - change : rawAmount;
+              if (finalAmount > 0) {
+                payments.push({ method, amount: finalAmount });
+              }
+          }
       });
+
       onCheckout(payments.length === 1 ? payments[0].method : 'mixed', payments);
       setPaymentModalOpen(false);
+      setPayAmounts({ cash: '', yape: '', card: '' });
   };
+
+  const PaymentRow = ({ method, label, icon: Icon, colorClass, iconColorClass }: { 
+    method: PaymentMethod, 
+    label: string, 
+    icon: any, 
+    colorClass: string,
+    iconColorClass: string 
+  }) => (
+    <div className={`flex items-center gap-4 bg-slate-50 p-4 rounded-[1.8rem] border-2 transition-all ${parseFloat(payAmounts[method] || '0') > 0 ? 'border-brand' : 'border-slate-100 focus-within:border-slate-300'}`}>
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${colorClass} ${iconColorClass}`}>
+            <Icon className="w-6 h-6"/>
+        </div>
+        <div className="flex-1">
+            <p className={`text-[10px] font-black uppercase tracking-widest ${iconColorClass}`}>{label}</p>
+            <input 
+                type="number" 
+                className="w-full bg-transparent font-black text-2xl outline-none text-slate-800 placeholder-slate-200" 
+                placeholder="0.00" 
+                value={payAmounts[method]} 
+                onChange={e => setPayAmounts({...payAmounts, [method]: e.target.value})}
+            />
+        </div>
+        <button 
+            onClick={() => fillRemaining(method)} 
+            className="p-3 text-slate-300 hover:text-brand transition-colors"
+            title="Auto-completar saldo"
+        >
+            <Wand2 className="w-6 h-6"/>
+        </button>
+    </div>
+  );
 
   return (
     <div className="h-full flex flex-col bg-white border-l border-slate-100 shadow-2xl">
@@ -98,47 +153,81 @@ export const Cart: React.FC<CartProps> = ({ items, onUpdateQuantity, onRemoveIte
             className="w-full py-5 bg-brand disabled:opacity-50 text-white rounded-[2rem] font-black shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3 text-xl tracking-tight uppercase"
             style={{ boxShadow: `0 20px 30px -10px var(--brand-medium)` }}
         >
-            <Banknote className="w-7 h-7"/> PAGAR AHORA
+            <Banknote className="w-7 h-7"/> COBRAR VENTA
         </button>
       </div>
 
       {paymentModalOpen && (
-          <div className="absolute inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-end sm:items-center justify-center p-4 animate-fade-in">
-              <div className="bg-white w-full max-w-md rounded-[3rem] p-8 shadow-2xl animate-fade-in-up flex flex-col max-h-[95vh] relative overflow-hidden">
+          <div className="absolute inset-0 z-50 bg-slate-900/70 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+              <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-8 shadow-2xl animate-fade-in-up flex flex-col max-h-[95vh] relative overflow-hidden">
+                  {/* Top Bar Accent */}
                   <div className="absolute top-0 left-0 w-full h-2 bg-brand"></div>
-                  <div className="flex justify-between items-center mb-8 pb-2">
-                      <h3 className="font-black text-2xl text-slate-800 tracking-tight">Cobro de Venta</h3>
-                      <button onClick={() => setPaymentModalOpen(false)} className="p-3 bg-slate-50 rounded-full hover:bg-slate-100 transition-colors"><X className="w-6 h-6"/></button>
+                  
+                  <div className="flex justify-between items-center mb-8">
+                      <h3 className="font-black text-3xl text-slate-800 tracking-tight">Cobro de Venta</h3>
+                      <button onClick={() => setPaymentModalOpen(false)} className="w-12 h-12 flex items-center justify-center bg-slate-50 rounded-full hover:bg-slate-100 transition-colors text-slate-400"><X className="w-7 h-7"/></button>
                   </div>
-                  <div className="mb-10 text-center bg-brand-soft p-8 rounded-[2.5rem] border border-brand-medium">
+
+                  <div className="mb-8 text-center bg-brand-soft p-10 rounded-[3rem] border border-brand-medium">
                       <p className="text-brand font-black uppercase text-[10px] tracking-widest mb-2 opacity-70">Total Facturado</p>
-                      <p className="text-5xl font-black text-slate-800 tracking-tighter">{settings.currency}{total.toFixed(2)}</p>
+                      <p className="text-6xl font-black text-slate-800 tracking-tighter">{settings.currency}{total.toFixed(2)}</p>
                   </div>
-                  <div className="flex-1 overflow-y-auto custom-scrollbar space-y-5 mb-6">
-                      <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-3xl border border-slate-100 focus-within:border-brand transition-all">
-                          <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 shadow-sm"><Banknote className="w-6 h-6"/></div>
-                          <div className="flex-1">
-                              <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Efectivo</p>
-                              <input type="number" className="w-full bg-transparent font-black text-2xl outline-none text-slate-800 placeholder-slate-200" placeholder="0.00" value={payAmounts.cash} onChange={e => setPayAmounts({...payAmounts, cash: e.target.value})}/>
+
+                  <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 mb-8">
+                      {/* EFECTIVO */}
+                      <PaymentRow 
+                        method="cash" 
+                        label="Efectivo" 
+                        icon={Banknote} 
+                        colorClass="bg-emerald-100" 
+                        iconColorClass="text-emerald-600"
+                      />
+
+                      {/* YAPE / PLIN */}
+                      <PaymentRow 
+                        method="yape" 
+                        label="Yape / Plin" 
+                        icon={Smartphone} 
+                        colorClass="bg-brand-soft" 
+                        iconColorClass="text-brand"
+                      />
+
+                      {/* VISA / TARJETA */}
+                      <PaymentRow 
+                        method="card" 
+                        label="Visa / Tarjeta" 
+                        icon={CreditCard} 
+                        colorClass="bg-blue-100" 
+                        iconColorClass="text-blue-600"
+                      />
+
+                      {/* CAMBIO / VUELTO */}
+                      {change > 0 && (
+                          <div className="p-6 bg-emerald-50 rounded-[2rem] border-2 border-emerald-200 flex justify-between items-center animate-fade-in">
+                              <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center text-white shadow-lg"><DollarSign className="w-6 h-6"/></div>
+                                  <span className="font-black text-emerald-700 uppercase tracking-widest text-sm">Devolver Cambio</span>
+                              </div>
+                              <span className="text-3xl font-black text-emerald-600">{settings.currency}{change.toFixed(2)}</span>
                           </div>
-                          <button onClick={() => fillRemaining('cash')} className="p-3 text-slate-300 hover:text-emerald-500"><Wand2 className="w-6 h-6"/></button>
-                      </div>
-                      <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-3xl border border-slate-100 focus-within:border-brand transition-all">
-                          <div className="w-12 h-12 rounded-2xl bg-brand-soft text-brand flex items-center justify-center shrink-0 shadow-sm"><Smartphone className="w-6 h-6"/></div>
-                          <div className="flex-1">
-                              <p className="text-[10px] font-black text-brand uppercase tracking-widest">Yape/Plin</p>
-                              <input type="number" className="w-full bg-transparent font-black text-2xl outline-none text-slate-800 placeholder-slate-200" placeholder="0.00" value={payAmounts.yape} onChange={e => setPayAmounts({...payAmounts, yape: e.target.value})}/>
-                          </div>
-                          <button onClick={() => fillRemaining('yape')} className="p-3 text-slate-300 hover:text-brand"><Wand2 className="w-6 h-6"/></button>
-                      </div>
+                      )}
                   </div>
-                  <div className="mt-auto pt-8 border-t border-slate-100">
+
+                  <div className="mt-auto">
+                      <div className="flex justify-between items-center mb-6 px-4">
+                          <span className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Restante por cubrir</span>
+                          <span className={`font-black text-xl ${remaining > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                            {settings.currency}{remaining.toFixed(2)}
+                          </span>
+                      </div>
+                      
                       <button 
                         onClick={confirmPayment}
-                        className={`w-full py-5 text-white rounded-[2rem] font-black text-xl shadow-2xl transition-all flex items-center justify-center gap-3 uppercase ${remaining > 0.01 ? 'bg-slate-200 cursor-not-allowed text-slate-400' : 'bg-brand shadow-brand-medium'}`}
+                        className={`w-full py-6 text-white rounded-[2rem] font-black text-xl shadow-2xl transition-all flex items-center justify-center gap-3 uppercase ${remaining > 0.01 ? 'bg-slate-200 cursor-not-allowed text-slate-400' : 'bg-brand hover:scale-[1.02] active:scale-95'}`}
                         disabled={remaining > 0.01}
                       >
-                          <ShieldCheck className="w-7 h-7"/> Finalizar Compra
+                          <ShieldCheck className="w-8 h-8"/> 
+                          {remaining > 0.01 ? 'Pago Incompleto' : 'Finalizar Compra'}
                       </button>
                   </div>
               </div>
