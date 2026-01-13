@@ -61,8 +61,9 @@ export interface StoreSettings {
   pricesIncludeTax: boolean;
   address?: string;
   phone?: string;
-  logo?: string; // Base64 string
-  themeColor?: string; // Hex string
+  logo?: string;
+  themeColor?: string; // Hex string (Primary)
+  secondaryColor?: string; // Hex string
 }
 
 export interface UserProfile {

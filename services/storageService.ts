@@ -87,7 +87,7 @@ export const StorageService = {
     if (error) throw error;
   },
 
-  // Settings - ACTUALIZADO A pos_settings
+  // Settings
   getSettings: async (): Promise<StoreSettings> => {
     const defaultSettings: StoreSettings = {
         name: 'Churre Malcriado POS',
@@ -102,17 +102,43 @@ export const StorageService = {
         .select('*')
         .eq('id', 1)
         .single();
-      if (error) return defaultSettings;
-      return data || defaultSettings;
+      if (error || !data) return defaultSettings;
+      
+      // Mapear de snake_case a camelCase
+      return {
+        name: data.name,
+        currency: data.currency,
+        taxRate: parseFloat(data.tax_rate),
+        pricesIncludeTax: data.prices_include_tax,
+        address: data.address,
+        phone: data.phone,
+        logo: data.logo,
+        themeColor: data.theme_color,
+        secondaryColor: data.secondary_color
+      };
     } catch {
       return defaultSettings;
     }
   },
 
   saveSettings: async (settings: StoreSettings) => {
+    // Mapear de camelCase a snake_case para coincidir con la tabla SQL
+    const payload = {
+      id: 1,
+      name: settings.name,
+      currency: settings.currency,
+      tax_rate: settings.taxRate,
+      prices_include_tax: settings.pricesIncludeTax,
+      address: settings.address,
+      phone: settings.phone,
+      logo: settings.logo,
+      theme_color: settings.themeColor,
+      secondary_color: settings.secondaryColor
+    };
+    
     const { error } = await supabase
       .from('pos_settings')
-      .upsert({ id: 1, ...settings });
+      .upsert(payload);
     if (error) throw error;
   },
 
