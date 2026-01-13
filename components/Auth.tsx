@@ -3,7 +3,7 @@ import { UserProfile, StoreSettings } from '../types';
 import { StorageService } from '../services/storageService';
 import { 
   Rocket, ShieldCheck, RefreshCw, 
-  ShieldAlert, Lock, Delete, ChevronRight
+  ShieldAlert, Lock, Delete, ChevronRight, Store
 } from 'lucide-react';
 
 interface AuthProps {
@@ -16,7 +16,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [error, setError] = useState(false);
   const [settings, setSettings] = useState<StoreSettings | null>(null);
   
-  // Easter Egg/God Mode
   const [logoClicks, setLogoClicks] = useState(0);
   const [showGodMode, setShowGodMode] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
@@ -59,8 +58,9 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const handleLoginSubmit = () => {
     setLoading(true);
     setTimeout(() => {
-      if (accessCode === '1234' || accessCode === '2025' || accessCode.length === 4) {
-          onLogin({ id: 'admin-001', name: 'Administrador Principal', role: 'admin' });
+      // PIN 2626 es ahora el acceso real principal
+      if (accessCode === '2626' || accessCode === '1234' || accessCode === '2025') {
+          onLogin({ id: 'admin-001', name: 'Administrador Churre', role: 'admin' });
       } else {
           setLoading(false);
           setError(true);
@@ -80,15 +80,15 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     }
   };
 
-  const brandColor = settings?.themeColor || '#4f46e5';
+  const brandColor = settings?.themeColor || '#e11d48';
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f172a] font-inter overflow-hidden relative selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen flex items-center justify-center bg-[#0f172a] font-inter overflow-hidden relative selection:bg-rose-500 selection:text-white">
         
-        {/* DYNAMIC BACKGROUND */}
+        {/* DYNAMIC BACKGROUND WITH BRAND COLORS */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute top-[-10%] left-[-10%] w-[70vw] h-[70vw] rounded-full blur-[120px] animate-pulse opacity-20" style={{ backgroundColor: brandColor }}></div>
-            <div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-teal-500/10 rounded-full blur-[120px]"></div>
+            <div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-amber-500/10 rounded-full blur-[120px]"></div>
         </div>
 
         <div className="w-full max-w-lg p-6 relative z-10">
@@ -96,18 +96,18 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             <div className="text-center mb-10 animate-fade-in">
                 <button 
                   onClick={handleLogoClick}
-                  className="w-24 h-24 bg-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 shadow-2xl border border-slate-700/50 hover:scale-105 transition-transform group overflow-hidden"
+                  className="w-28 h-28 bg-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 shadow-2xl border border-white/20 hover:scale-105 transition-transform group overflow-hidden"
                 >
                     {settings?.logo ? (
                       <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" />
                     ) : (
-                      <Rocket className="w-12 h-12 transition-transform group-hover:rotate-12" style={{ color: brandColor }} />
+                      <Store className="w-14 h-14 transition-transform group-hover:rotate-6" style={{ color: brandColor }} />
                     )}
                 </button>
                 <h1 className="text-4xl font-black text-white tracking-tighter mb-2">
-                   {settings?.name.split(' ')[0] || 'POS'}<span style={{ color: brandColor }}>{settings?.name.split(' ')[1] || 'GO!'}</span>
+                   {settings?.name.split(' ')[0] || 'Churre'}<span style={{ color: brandColor }}>{settings?.name.split(' ')[1] || 'Malcriado'}</span>
                 </h1>
-                <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.3em]">Gestión de Operaciones Privada</p>
+                <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.3em]">Sanguchería Piurana • POS System</p>
             </div>
 
             {/* LOGIN CARD */}
@@ -159,7 +159,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     <button
                         onClick={handleDelete}
                         disabled={loading}
-                        className="h-20 bg-red-500/10 hover:bg-red-500/20 border border-red-500/10 rounded-3xl font-black text-white transition-all active:scale-90 flex items-center justify-center"
+                        className="h-20 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/10 rounded-3xl font-black text-white transition-all active:scale-90 flex items-center justify-center"
                     >
                         <Delete className="w-7 h-7" />
                     </button>
@@ -169,21 +169,21 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 <div className="text-center">
                     {loading ? (
                         <div className="flex items-center justify-center gap-3 font-bold uppercase text-[10px] tracking-widest animate-pulse" style={{ color: brandColor }}>
-                            <RefreshCw className="w-4 h-4 animate-spin" /> Verificando Acceso
+                            <RefreshCw className="w-4 h-4 animate-spin" /> Verificando PIN
                         </div>
                     ) : error ? (
-                        <p className="text-red-400 font-bold uppercase text-[10px] tracking-widest animate-bounce">Código Incorrecto</p>
+                        <p className="text-rose-400 font-black uppercase text-[10px] tracking-widest animate-bounce">Código Incorrecto</p>
                     ) : (
                         <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest flex items-center justify-center gap-2">
-                            <ShieldCheck className="w-4 h-4 text-emerald-500" /> Terminal Asegurada
+                            <ShieldCheck className="w-4 h-4 text-emerald-500" /> Terminal de Sanguchería Asegurada
                         </p>
                     )}
                 </div>
             </div>
 
             <div className="mt-12 flex justify-between items-center px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Sede Activa</span>
-                <span className="opacity-50">PosGo! Terminal</span>
+                <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Sede Piura Activa</span>
+                <span className="opacity-50">Churre POS v2.6.26</span>
             </div>
         </div>
 
@@ -191,8 +191,8 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         {showGodMode && (
              <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-3xl z-[100] flex items-center justify-center p-8 animate-fade-in">
                  <div className="bg-slate-900 w-full max-w-sm rounded-[3rem] p-10 shadow-2xl animate-fade-in-up text-center border border-white/10">
-                     <div className="w-20 h-20 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-8 border border-red-500/20">
-                         <ShieldAlert className="w-10 h-10 text-red-500"/>
+                     <div className="w-20 h-20 bg-rose-500/10 rounded-2xl flex items-center justify-center mx-auto mb-8 border border-rose-500/20">
+                         <ShieldAlert className="w-10 h-10 text-rose-500"/>
                      </div>
                      <h2 className="text-2xl font-black text-white mb-2 tracking-tight">Acceso Maestro</h2>
                      <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-10">Restringido</p>
@@ -202,15 +202,15 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                             type="password" 
                             value={masterPassword}
                             onChange={e => setMasterPassword(e.target.value)}
-                            className="w-full px-6 py-5 bg-white/5 border border-white/10 rounded-[1.5rem] text-white font-black outline-none focus:border-red-500 transition-all text-2xl tracking-widest text-center"
+                            className="w-full px-6 py-5 bg-white/5 border border-white/10 rounded-[1.5rem] text-white font-black outline-none focus:border-rose-500 transition-all text-2xl tracking-widest text-center"
                             placeholder="••••"
                             autoFocus
                         />
-                        {godError && <p className="text-red-500 text-[10px] font-black uppercase tracking-widest">{godError}</p>}
+                        {godError && <p className="text-rose-500 text-[10px] font-black uppercase tracking-widest">{godError}</p>}
                         
                         <div className="flex gap-4 pt-4">
                             <button type="button" onClick={() => setShowGodMode(false)} className="flex-1 py-4 text-slate-500 font-black hover:bg-white/5 rounded-2xl transition-all uppercase tracking-widest text-[10px]">Cerrar</button>
-                            <button type="submit" className="flex-1 py-4 bg-red-600 text-white font-black rounded-2xl transition-all uppercase tracking-widest text-[10px] flex items-center justify-center gap-2">Validar <ChevronRight className="w-4 h-4"/></button>
+                            <button type="submit" className="flex-1 py-4 bg-rose-600 text-white font-black rounded-2xl transition-all uppercase tracking-widest text-[10px] flex items-center justify-center gap-2">Validar <ChevronRight className="w-4 h-4"/></button>
                         </div>
                      </form>
                  </div>

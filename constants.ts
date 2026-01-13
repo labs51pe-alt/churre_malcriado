@@ -1,31 +1,31 @@
 import { StoreSettings } from './types';
 
-export const CATEGORIES = ['General', 'Bebidas', 'Alimentos', 'Limpieza', 'Electrónica', 'Hogar', 'Otros'];
+export const CATEGORIES = ['Sanguches', 'Bebidas', 'Complementos', 'Combos', 'Otros'];
 
 export const DEFAULT_SETTINGS: StoreSettings = {
-  name: 'Lumina Store',
+  name: 'Churre Malcriado',
   currency: 'S/',
   taxRate: 0.18, 
   pricesIncludeTax: true,
-  address: 'Av. Principal 123, Lima',
+  address: 'Av. Principal 123, Piura',
   phone: '999-999-999',
-  themeColor: '#4f46e5' // Indigo 600
+  themeColor: '#e11d48' // Rosa vibrante del logo
 };
 
 export const MOCK_PRODUCTS = [
-  { id: '1', name: 'Inca Kola 600ml', price: 3.50, category: 'Bebidas', stock: 50, barcode: '77501000' },
-  { id: '2', name: 'Papas Lays 45g', price: 2.50, category: 'Alimentos', stock: 32, barcode: '75010001' },
-  { id: '3', name: 'Galleta Casino', price: 1.20, category: 'Alimentos', stock: 15, barcode: '75010002' },
-  { id: '4', name: 'Agua San Mateo', price: 2.00, category: 'Bebidas', stock: 100, barcode: '77502000' },
-  { id: '5', name: 'Detergente Bolivar', price: 4.50, category: 'Limpieza', stock: 10, barcode: '77503000' }
+  { id: '1', name: 'Sanguche de Pavo', price: 15.50, category: 'Sanguches', stock: 25, barcode: '77501001' },
+  { id: '2', name: 'Sanguche de Lechón', price: 14.50, category: 'Sanguches', stock: 20, barcode: '77501002' },
+  { id: '3', name: 'Chicha Morada 500ml', price: 5.00, category: 'Bebidas', stock: 50, barcode: '77501003' },
+  { id: '4', name: 'Tamal Piurano', price: 6.00, category: 'Complementos', stock: 15, barcode: '77501004' },
+  { id: '5', name: 'Combo Malcriado', price: 22.00, category: 'Combos', stock: 10, barcode: '77501005' },
+  { id: '6', name: 'Inca Kola 600ml', price: 3.50, category: 'Bebidas', stock: 40, barcode: '77501006' }
 ];
 
 export const THEME_COLORS = [
-  { name: 'Índigo', hex: '#4f46e5' },
-  { name: 'Esmeralda', hex: '#10b981' },
-  { name: 'Rosa', hex: '#e11d48' },
-  { name: 'Ámbar', hex: '#f59e0b' },
-  { name: 'Cielo', hex: '#0ea5e9' },
-  { name: 'Violeta', hex: '#8b5cf6' },
-  { name: 'Negro', hex: '#0f172a' }
+  { name: 'Rosa Churre', hex: '#e11d48' },
+  { name: 'Naranja Brasa', hex: '#f97316' },
+  { name: 'Amarillo Mostaza', hex: '#eab308' },
+  { name: 'Índigo Moderno', hex: '#4f46e5' },
+  { name: 'Verde Lima', hex: '#84cc16' },
+  { name: 'Negro Elegante', hex: '#0f172a' }
 ];
