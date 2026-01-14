@@ -77,12 +77,11 @@ export const StorageService = {
   },
 
   saveTransaction: async (transaction: Transaction) => {
-    // Forzamos modalidad válida para el INSERT
     const validModality = (transaction.modality === 'delivery' || transaction.modality === 'pickup') 
         ? transaction.modality 
         : 'pickup';
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('orders')
       .insert({
         customer_name: transaction.customerName || 'Cliente POS',
@@ -96,12 +95,14 @@ export const StorageService = {
         payment_method: transaction.paymentMethod,
         order_origin: transaction.orderOrigin || 'POS',
         session_id: transaction.shiftId ? parseInt(transaction.shiftId) : null
-      });
+      })
+      .select();
     
     if (error) {
         console.error("Error saving transaction:", error);
         throw new Error(error.message);
     }
+    return data ? data[0] : null;
   },
 
   updateOrderStatus: async (orderId: string, newStatus: string, additionalData: any = {}) => {
@@ -123,11 +124,6 @@ export const StorageService = {
     }
   },
 
-  /**
-   * LA SOLUCIÓN DEFINITIVA: 
-   * Transforma un pedido web en un pedido de cocina limpio.
-   * Borra el viejo y crea uno nuevo para evitar conflictos de base de datos.
-   */
   updateWebOrderToKitchen: async (orderId: string, shiftId: string, method: string, transaction: Transaction) => {
     try {
         const methodMap: Record<string, string> = {
@@ -135,28 +131,27 @@ export const StorageService = {
         };
         const formattedMethod = methodMap[method] || method;
 
-        // 1. Borrar el pedido "Pendiente" de la web para limpiar la base de datos
-        const { error: deleteError } = await supabase
-            .from('orders')
-            .delete()
-            .eq('id', orderId);
-
-        if (deleteError) {
-            console.warn("No se pudo borrar el pedido original, intentando sobrescribir...");
-        }
-
-        // 2. Insertar un pedido TOTALMENTE NUEVO con los datos validados del POS
+        // 1. Insertar el pedido nuevo primero para asegurar que la cocina lo vea
         const newTransaction: Transaction = {
             ...transaction,
-            id: Date.now().toString(), // Nuevo ID para evitar colisiones
+            id: undefined as any, // Dejar que Supabase genere un ID nuevo
             status: 'Preparando',
-            orderOrigin: 'Web', // Mantenemos la etiqueta para el monitor
+            orderOrigin: 'Web',
             shiftId: shiftId,
             paymentMethod: formattedMethod,
             modality: (transaction.modality === 'delivery' || transaction.modality === 'pickup') ? transaction.modality : 'pickup'
         };
 
         await StorageService.saveTransaction(newTransaction);
+
+        // 2. Borrar el pedido original INMEDIATAMENTE después
+        const { error: deleteError } = await supabase
+            .from('orders')
+            .delete()
+            .eq('id', orderId);
+
+        if (deleteError) console.error("Error al borrar original:", deleteError);
+
         return { success: true };
     } catch (err: any) {
         console.error("Error en transformación de pedido:", err);
@@ -260,6 +255,7 @@ export const StorageService = {
       phone: settings.phone,
       logo: settings.logo,
       theme_color: settings.themeColor,
+      // Fix: Use correct camelCase property name secondaryColor from StoreSettings interface
       secondary_color: settings.secondaryColor
     };
     const { error } = await supabase.from('pos_settings').upsert(payload);
