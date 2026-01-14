@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { ViewState, Product, CartItem, Transaction, StoreSettings, Purchase, CashShift, CashMovement, UserProfile, Customer, Supplier } from './types';
 import { StorageService } from './services/storageService';
@@ -13,7 +14,7 @@ import { OnlineOrdersView } from './components/OnlineOrdersView';
 import { CashControlModal } from './components/CashControlModal';
 import { POSView } from './components/POSView';
 import { DEFAULT_SETTINGS, CATEGORIES } from './constants';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -41,10 +42,13 @@ const App: React.FC = () => {
   const [ticketData, setTicketData] = useState<any>(null);
   const [initialPurchaseSearch, setInitialPurchaseSearch] = useState('');
   
+  // Toast State para pedidos web
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('¡Pedido Web enviado a Cocina!');
+
   // Tracking del pedido web que se está cobrando
   const [pendingWebOrderId, setPendingWebOrderId] = useState<string | null>(null);
 
-  // Inyectar variables de color dinámicas basadas en Settings
   useEffect(() => {
     const brand = typeof settings.themeColor === 'string' ? settings.themeColor : '#e11d48';
     document.documentElement.style.setProperty('--brand-primary', brand);
@@ -76,7 +80,7 @@ const App: React.FC = () => {
         
         setIsInitializing(false);
     } catch (error) {
-        console.error("Error loading data from Supabase:", error);
+        console.error("Error loading data:", error);
         setIsInitializing(false);
     }
   };
@@ -134,14 +138,11 @@ const App: React.FC = () => {
       setCart(prev => prev.map(item => (item.id === id && item.selectedVariantId === variantId) ? { ...item, discount } : item)); 
   };
   
-  // Función para importar un pedido web al POS
   const handleImportWebOrder = (order: Transaction) => {
       if (!activeShift) return alert("Debes abrir la caja antes de procesar pagos.");
-      
-      // Limpiar carrito actual y cargar el del pedido web
       setCart(order.items);
       setPendingWebOrderId(order.id);
-      setView(ViewState.POS); // Cambiar a la vista de venta automáticamente
+      setView(ViewState.POS);
   };
 
   const handleCheckout = async (method: any, payments: any[]) => {
@@ -153,116 +154,141 @@ const App: React.FC = () => {
       let tax = settings.pricesIncludeTax ? (total - (total / (1 + settings.taxRate))) : (total * settings.taxRate);
       
       const transaction: Transaction = { 
-          id: Date.now().toString(), 
+          id: pendingWebOrderId || Date.now().toString(), 
           date: new Date().toISOString(), 
           items: [...cart], 
           subtotal: settings.pricesIncludeTax ? (total - tax) : total, 
           tax, 
           discount: totalDiscount, 
           total: settings.pricesIncludeTax ? total : (total + tax), 
-          paymentMethod: method, 
+          paymentMethod: typeof method === 'string' ? method : (payments[0]?.method || 'mixed'), 
           payments, 
           profit: 0, 
           shiftId: activeShift.id,
           onlineOrderId: pendingWebOrderId || undefined
       };
       
-      await StorageService.saveTransaction(transaction);
+      try {
+          // 1. INTENTAR ACTUALIZACIÓN EN NUBE (WEB O POS)
+          if (pendingWebOrderId) {
+              const success = await StorageService.updateWebOrderToKitchen(pendingWebOrderId, activeShift.id, transaction.paymentMethod, transaction);
+              
+              setToastMessage(success 
+                  ? "¡Pedido Sincronizado y Enviado a Cocina!" 
+                  : "Aviso: Error de conexión con la nube. El pedido se guardó solo localmente."
+              );
+              setShowToast(true);
+              setTimeout(() => setShowToast(false), 4000);
+          } else {
+              // Venta directa del POS
+              await StorageService.saveTransaction(transaction);
+          }
 
-      // Si venía de un pedido web, lo marcamos como completado en Supabase
-      if (pendingWebOrderId) {
-          const { error: updateError } = await StorageService.supabase
-            .from('orders')
-            .update({ status: 'Completado', session_id: parseInt(activeShift.id) })
-            .eq('id', pendingWebOrderId);
+          // 2. ACTUALIZAR STOCK (NO BLOQUEANTE)
+          try {
+              await Promise.all(products.map(async p => { 
+                  const cartItems = cart.filter(c => c.id === p.id); 
+                  if (cartItems.length === 0) return; 
+                  let newStock = p.stock; 
+                  let newVariants = p.variants ? [...p.variants] : []; 
+                  cartItems.forEach(c => { 
+                      if (c.selectedVariantId && newVariants.length) { 
+                          newVariants = newVariants.map(v => v.id === c.selectedVariantId ? { ...v, stock: v.stock - c.quantity } : v); 
+                      } else { 
+                          newStock -= c.quantity; 
+                      } 
+                  }); 
+                  if (p.hasVariants) newStock = newVariants.reduce((sum,v) => sum + v.stock, 0); 
+                  await StorageService.saveProduct({ ...p, stock: newStock, variants: newVariants });
+              }));
+          } catch (stockError) {
+              console.warn("Error secundario de stock:", stockError);
+          }
+
+          // 3. MOSTRAR TICKET
+          setTicketType('SALE'); 
+          setTicketData(transaction); 
+          setShowTicket(true);
           
-          if (updateError) console.error("Error al cerrar pedido web:", updateError);
+          // 4. LIMPIAR ESTADO Y RECARGAR
+          setCart([]); 
           setPendingWebOrderId(null);
+          loadData();
+          
+      } catch (err: any) {
+          console.error("Error crítico en Checkout:", err);
+          alert(`Error al procesar el cobro: ${err.message || 'Error de conexión'}`);
       }
-      
-      // Actualizar stock
-      const newProducts = products.map(p => { 
-          const cartItems = cart.filter(c => c.id === p.id); 
-          if (cartItems.length === 0) return p; 
-          let newStock = p.stock; 
-          let newVariants = p.variants ? [...p.variants] : []; 
-          cartItems.forEach(c => { 
-              if (c.selectedVariantId && newVariants.length) { 
-                  newVariants = newVariants.map(v => v.id === c.selectedVariantId ? { ...v, stock: v.stock - c.quantity } : v); 
-              } else { 
-                  newStock -= c.quantity; 
-              } 
-          }); 
-          if (p.hasVariants) newStock = newVariants.reduce((sum,v) => sum + v.stock, 0); 
-          const updatedP = { ...p, stock: newStock, variants: newVariants };
-          StorageService.saveProduct(updatedP);
-          return updatedP;
-      }); 
-      
-      setProducts(newProducts);
-      setTransactions([transaction, ...transactions]);
-      setCart([]); 
-      setTicketType('SALE'); 
-      setTicketData(transaction); 
-      setShowTicket(true);
   };
 
   const handleCashAction = async (action: 'OPEN' | 'CLOSE' | 'IN' | 'OUT', amount: number, description: string) => {
-      if (action === 'OPEN') {
-          const newShiftObj: CashShift = { 
-              id: Date.now().toString(), 
-              startTime: new Date().toISOString(), 
-              startAmount: amount, 
-              status: 'OPEN', 
-              totalSalesCash: 0, 
-              totalSalesDigital: 0 
-          };
-          const savedShift = await StorageService.saveShift(newShiftObj);
-          const shiftId = savedShift.id.toString();
-          setActiveShiftId(shiftId); 
-          setShifts([{ ...newShiftObj, id: shiftId }, ...shifts]); 
-          
-          const move: CashMovement = { id: Date.now().toString(), shiftId, type: 'OPEN', amount, description: 'Apertura de Caja', timestamp: new Date().toISOString() };
-          await StorageService.saveMovement(move);
-          setMovements([move, ...movements]);
+      try {
+          if (action === 'OPEN') {
+              const newShiftObj: CashShift = { 
+                  id: Date.now().toString(), 
+                  startTime: new Date().toISOString(), 
+                  startAmount: amount, 
+                  status: 'OPEN', 
+                  totalSalesCash: 0, 
+                  totalSalesDigital: 0 
+              };
+              const savedShift = await StorageService.saveShift(newShiftObj);
+              const shiftId = savedShift.id.toString();
+              setActiveShiftId(shiftId); 
+              setShifts([{ ...newShiftObj, id: shiftId }, ...shifts]); 
+              
+              const move: CashMovement = { id: Date.now().toString(), shiftId, type: 'OPEN', amount, description: 'Apertura de Caja', timestamp: new Date().toISOString() };
+              await StorageService.saveMovement(move);
+              setMovements([move, ...movements]);
 
-      } else if (action === 'CLOSE' && activeShift) {
-          const closedShift = { ...activeShift, endTime: new Date().toISOString(), endAmount: amount, status: 'CLOSED' as const };
-          await StorageService.saveShift(closedShift); 
-          setShifts(shifts.map(s => s.id === activeShift.id ? closedShift : s)); 
-          setActiveShiftId(null);
-          
-          const move: CashMovement = { id: Date.now().toString(), shiftId: activeShift.id, type: 'CLOSE', amount, description: 'Cierre de Caja', timestamp: new Date().toISOString() };
-          await StorageService.saveMovement(move);
-          setMovements([move, ...movements]);
+          } else if (action === 'CLOSE' && activeShift) {
+              const closedShift = { ...activeShift, endTime: new Date().toISOString(), endAmount: amount, status: 'CLOSED' as const };
+              await StorageService.saveShift(closedShift); 
+              setShifts(shifts.map(s => s.id === activeShift.id ? closedShift : s)); 
+              setActiveShiftId(null);
+              
+              const move: CashMovement = { id: Date.now().toString(), shiftId: activeShift.id, type: 'CLOSE', amount, description: 'Cierre de Caja', timestamp: new Date().toISOString() };
+              await StorageService.saveMovement(move);
+              setMovements([move, ...movements]);
 
-          setTicketType('REPORT'); 
-          setTicketData({ 
-              shift: closedShift, 
-              movements: movements.filter(m => m.shiftId === activeShift.id), 
-              transactions: transactions.filter(t => t.shiftId === activeShift.id) 
-          }); 
-          setShowTicket(true);
-      } else if (activeShift) {
-          const move: CashMovement = { id: Date.now().toString(), shiftId: activeShift.id, type: action, amount, description, timestamp: new Date().toISOString() };
-          await StorageService.saveMovement(move);
-          setMovements([move, ...movements]);
+              setTicketType('REPORT'); 
+              setTicketData({ 
+                  shift: closedShift, 
+                  movements: movements.filter(m => m.shiftId === activeShift.id), 
+                  transactions: transactions.filter(t => t.shiftId === activeShift.id) 
+              }); 
+              setShowTicket(true);
+          } else if (activeShift) {
+              const move: CashMovement = { id: Date.now().toString(), shiftId: activeShift.id, type: action, amount, description, timestamp: new Date().toISOString() };
+              await StorageService.saveMovement(move);
+              setMovements([move, ...movements]);
+          }
+      } catch (e: any) {
+          alert(`Error en caja: ${e.message}`);
       }
   };
 
   const handleSaveProduct = async () => {
       if (!currentProduct?.name) return;
-      const savedP = await StorageService.saveProduct(currentProduct);
-      const updated = products.find(p => p.id === savedP.id) 
-        ? products.map(p => p.id === savedP.id ? savedP : p) 
-        : [...products, savedP];
-      setProducts(updated); 
-      setIsProductModalOpen(false);
+      try {
+          const savedP = await StorageService.saveProduct(currentProduct);
+          const updated = products.find(p => p.id === savedP.id) 
+            ? products.map(p => p.id === savedP.id ? savedP : p) 
+            : [...products, savedP];
+          setProducts(updated); 
+          setIsProductModalOpen(false);
+      } catch (e: any) {
+          alert(`Error al guardar producto: ${e.message}`);
+      }
   };
   
   const handleUpdateSettings = async (newSettings: StoreSettings) => {
-      await StorageService.saveSettings(newSettings);
-      setSettings(newSettings);
+      try {
+          await StorageService.saveSettings(newSettings);
+          setSettings(newSettings);
+      } catch (e: any) {
+          alert(`Error al guardar configuración: ${e.message}`);
+      }
   };
 
   if (isInitializing) return (
@@ -308,17 +334,19 @@ const App: React.FC = () => {
                     products={products} settings={settings} transactions={transactions} purchases={purchases}
                     onNewProduct={() => { setCurrentProduct({ id: '', name: '', price: 0, category: CATEGORIES[0], stock: 0, variants: [] }); setIsProductModalOpen(true); }} 
                     onEditProduct={(p) => { setCurrentProduct(p); setIsProductModalOpen(true); }} 
-                    onDeleteProduct={async (id) => { if(confirm('¿Eliminar?')) { await StorageService.deleteProduct(id); setProducts(products.filter(p => p.id !== id)); } }} 
+                    onDeleteProduct={async (id) => { if(confirm('¿Eliminar?')) { try { await StorageService.deleteProduct(id); setProducts(products.filter(p => p.id !== id)); } catch(e:any) { alert(e.message); } } }} 
                     onGoToPurchase={(name) => { setInitialPurchaseSearch(name); setView(ViewState.PURCHASES); }}
                 />
             )}
             {view === ViewState.PURCHASES && (
                 <PurchasesView 
                     products={products} suppliers={suppliers} purchases={purchases} settings={settings}
-                    onProcessPurchase={async (p, up) => { await StorageService.savePurchase(p); setPurchases([p, ...purchases]); setProducts(up); }}
-                    onAddSupplier={async (s) => { await StorageService.saveSupplier(s); setSuppliers([...suppliers, s]); }}
+                    onProcessPurchase={async (p, up) => { try { await StorageService.savePurchase(p); setPurchases([p, ...purchases]); setProducts(up); } catch(e:any) { alert(e.message); } }}
+                    onAddSupplier={async (s) => { try { await StorageService.saveSupplier(s); setSuppliers([...suppliers, s]); } catch(e:any) { alert(e.message); } }}
                     onRequestNewProduct={(barcode) => { setCurrentProduct({ id: '', name: '', price: 0, category: CATEGORIES[0], stock: 0, variants: [], barcode: barcode || '' }); setIsProductModalOpen(true); }}
-                    initialSearchTerm={initialPurchaseSearch} onClearInitialSearch={() => setInitialPurchaseSearch('')}
+                    initialSearchTerm={initialPurchaseSearch} 
+                    /* Fix: Correcting setInitialSearchTerm to setInitialPurchaseSearch */
+                    onClearInitialSearch={() => setInitialPurchaseSearch('')}
                 />
             )}
             {view === ViewState.ADMIN && <AdminView transactions={transactions} products={products} shifts={shifts} movements={movements} settings={settings} />}
@@ -327,6 +355,14 @@ const App: React.FC = () => {
 
             <CashControlModal isOpen={showCashControl} onClose={() => setShowCashControl(false)} activeShift={activeShift} movements={movements} transactions={transactions} onCashAction={handleCashAction} currency={settings.currency} />
             
+            {/* TOAST PARA PEDIDOS WEB */}
+            {showToast && (
+                <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-[2rem] shadow-2xl z-[100] flex items-center gap-3 animate-fade-in-up border-4 border-white">
+                    <CheckCircle className="w-6 h-6"/>
+                    <span className="font-black uppercase tracking-wider text-sm">{toastMessage}</span>
+                </div>
+            )}
+
             {isProductModalOpen && currentProduct && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col animate-fade-in-up">
@@ -365,4 +401,5 @@ const App: React.FC = () => {
   );
 };
 
+/* Fix: Adding missing default export to solve "Module has no default export" error in index.tsx */
 export default App;

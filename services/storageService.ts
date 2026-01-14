@@ -3,7 +3,6 @@ import { UserProfile, Product, Transaction, Purchase, StoreSettings, Customer, S
 import { supabase } from './supabase';
 
 export const StorageService = {
-  // Expose supabase client for direct queries where a service method doesn't exist
   supabase,
 
   // Session
@@ -46,13 +45,14 @@ export const StorageService = {
         barcode: product.barcode
       })
       .select();
-    if (error) throw error;
+    
+    if (error) throw new Error(error.message);
     return data ? data[0] : product;
   },
 
   deleteProduct: async (id: string) => {
     const { error } = await supabase.from('menu_items').delete().eq('id', id);
-    if (error) throw error;
+    if (error) throw new Error(error.message);
   },
 
   // Orders / Transactions
@@ -81,6 +81,9 @@ export const StorageService = {
       .insert({
         customer_name: 'POS Customer',
         total: transaction.total,
+        subtotal: transaction.subtotal,
+        tax: transaction.tax,
+        discount: transaction.discount,
         modality: 'pickup',
         status: 'Completado',
         items: transaction.items,
@@ -88,7 +91,118 @@ export const StorageService = {
         order_origin: 'POS',
         session_id: transaction.shiftId ? parseInt(transaction.shiftId) : null
       });
-    if (error) throw error;
+    if (error) throw new Error(error.message);
+  },
+
+  // Función de actualización (Cambiado de upsert a update para evitar RLS de inserción)
+  updateOrderStatus: async (orderId: string, newStatus: string, additionalData: any = {}) => {
+    if (!orderId) return false;
+
+    try {
+      // Usamos UPDATE en lugar de UPSERT. 
+      // Si el pedido no existe en la nube, fallará silenciosamente y se manejará en el App.tsx
+      const { data, error } = await supabase
+        .from('orders')
+        .update({ 
+            status: newStatus,
+            ...additionalData
+        })
+        .eq('id', String(orderId).trim())
+        .select();
+
+      if (error) {
+          // El error de "violates RLS policy" se captura aquí
+          console.error("Error de Permisos Supabase (RLS):", error.message);
+          return false;
+      }
+
+      return data && data.length > 0;
+    } catch (err) {
+      console.error("Excepción al actualizar estado:", err);
+      return false;
+    }
+  },
+
+  updateWebOrderToKitchen: async (orderId: string, shiftId: string, method: string, transaction: Transaction) => {
+    const methodMap: Record<string, string> = {
+        'cash': 'Efectivo',
+        'card': 'Tarjeta',
+        'yape': 'Yape/Plin',
+        'plin': 'Yape/Plin',
+        'mixed': 'Mixto'
+    };
+    
+    const formattedMethod = methodMap[method] || method;
+
+    const payload = {
+        session_id: parseInt(shiftId), 
+        payment_method: formattedMethod,
+        items: transaction.items,
+        total: transaction.total,
+        subtotal: transaction.subtotal,
+        tax: transaction.tax,
+        discount: transaction.discount,
+        order_origin: 'Web', 
+        customer_name: transaction.customerName || 'Cliente Web',
+        modality: transaction.modality || 'pickup'
+    };
+
+    return await StorageService.updateOrderStatus(orderId, 'Preparando', payload);
+  },
+
+  getPurchases: async (): Promise<Purchase[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('purchases')
+        .select('*')
+        .order('date', { ascending: false });
+      if (error) return [];
+      return (data || []).map(d => ({
+        ...d,
+        supplierId: d.supplier_id
+      }));
+    } catch {
+      return [];
+    }
+  },
+
+  savePurchase: async (purchase: Purchase) => {
+    const { error } = await supabase
+      .from('purchases')
+      .insert({
+        id: purchase.id,
+        date: purchase.date,
+        supplier_id: purchase.supplierId,
+        total: purchase.total,
+        items: purchase.items
+      });
+    if (error) throw new Error(error.message);
+  },
+
+  getSuppliers: async (): Promise<Supplier[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('suppliers')
+        .select('*')
+        .order('name');
+      if (error) return [];
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+
+  saveSupplier: async (supplier: Supplier) => {
+    const { data, error } = await supabase
+      .from('suppliers')
+      .upsert({
+        id: supplier.id && supplier.id.length > 5 ? supplier.id : undefined,
+        name: supplier.name,
+        contact: supplier.contact
+      })
+      .select();
+    if (error) throw new Error(error.message);
+    return data ? data[0] : supplier;
   },
 
   // Settings
@@ -108,7 +222,6 @@ export const StorageService = {
         .single();
       if (error || !data) return defaultSettings;
       
-      // Mapear de snake_case a camelCase
       return {
         name: data.name,
         currency: data.currency,
@@ -126,7 +239,6 @@ export const StorageService = {
   },
 
   saveSettings: async (settings: StoreSettings) => {
-    // Mapear de camelCase a snake_case para coincidir con la tabla SQL
     const payload = {
       id: 1,
       name: settings.name,
@@ -143,7 +255,7 @@ export const StorageService = {
     const { error } = await supabase
       .from('pos_settings')
       .upsert(payload);
-    if (error) throw error;
+    if (error) throw new Error(error.message);
   },
 
   // Cash Sessions
@@ -180,7 +292,7 @@ export const StorageService = {
     } else {
         result = await supabase.from('cash_sessions').insert(payload).select();
     }
-    if (result.error) throw result.error;
+    if (result.error) throw new Error(result.error.message);
     const d = result.data[0];
     return {
         id: d.id.toString(),
@@ -218,36 +330,6 @@ export const StorageService = {
         reason: movement.description,
         created_at: movement.timestamp
     });
-    if (error) throw error;
-  },
-
-  getSuppliers: async () => {
-    try {
-      const { data, error } = await supabase.from('suppliers').select('*');
-      if (error) return [];
-      return data || [];
-    } catch {
-      return [];
-    }
-  },
-
-  saveSupplier: async (supplier: Supplier) => {
-    const { error } = await supabase.from('suppliers').insert(supplier);
-    if (error) throw error;
-  },
-
-  getPurchases: async () => {
-    try {
-      const { data, error } = await supabase.from('purchases').select('*').order('date', { ascending: false });
-      if (error) return [];
-      return data || [];
-    } catch {
-      return [];
-    }
-  },
-
-  savePurchase: async (purchase: Purchase) => {
-    const { error } = await supabase.from('purchases').insert(purchase);
-    if (error) throw error;
+    if (error) throw new Error(error.message);
   }
 };
