@@ -68,7 +68,8 @@ export const StorageService = {
           date: d.created_at,
           items: d.items || [],
           paymentMethod: d.payment_method,
-          shiftId: d.session_id ? d.session_id.toString() : undefined
+          shiftId: d.session_id ? d.session_id.toString() : undefined,
+          orderOrigin: d.order_origin
       }));
     } catch {
       return [];
@@ -76,78 +77,91 @@ export const StorageService = {
   },
 
   saveTransaction: async (transaction: Transaction) => {
+    // Forzamos modalidad válida para el INSERT
+    const validModality = (transaction.modality === 'delivery' || transaction.modality === 'pickup') 
+        ? transaction.modality 
+        : 'pickup';
+
     const { error } = await supabase
       .from('orders')
       .insert({
-        customer_name: 'POS Customer',
-        total: transaction.total,
-        subtotal: transaction.subtotal,
-        tax: transaction.tax,
-        discount: transaction.discount,
-        modality: 'pickup',
-        status: 'Completado',
+        customer_name: transaction.customerName || 'Cliente POS',
+        total: Number(transaction.total),
+        subtotal: Number(transaction.subtotal || 0),
+        tax: Number(transaction.tax || 0),
+        discount: Number(transaction.discount || 0),
+        modality: validModality,
+        status: transaction.status || 'Preparando', 
         items: transaction.items,
         payment_method: transaction.paymentMethod,
-        order_origin: 'POS',
+        order_origin: transaction.orderOrigin || 'POS',
         session_id: transaction.shiftId ? parseInt(transaction.shiftId) : null
       });
-    if (error) throw new Error(error.message);
-  },
-
-  // Función de actualización (Cambiado de upsert a update para evitar RLS de inserción)
-  updateOrderStatus: async (orderId: string, newStatus: string, additionalData: any = {}) => {
-    if (!orderId) return false;
-
-    try {
-      // Usamos UPDATE en lugar de UPSERT. 
-      // Si el pedido no existe en la nube, fallará silenciosamente y se manejará en el App.tsx
-      const { data, error } = await supabase
-        .from('orders')
-        .update({ 
-            status: newStatus,
-            ...additionalData
-        })
-        .eq('id', String(orderId).trim())
-        .select();
-
-      if (error) {
-          // El error de "violates RLS policy" se captura aquí
-          console.error("Error de Permisos Supabase (RLS):", error.message);
-          return false;
-      }
-
-      return data && data.length > 0;
-    } catch (err) {
-      console.error("Excepción al actualizar estado:", err);
-      return false;
+    
+    if (error) {
+        console.error("Error saving transaction:", error);
+        throw new Error(error.message);
     }
   },
 
-  updateWebOrderToKitchen: async (orderId: string, shiftId: string, method: string, transaction: Transaction) => {
-    const methodMap: Record<string, string> = {
-        'cash': 'Efectivo',
-        'card': 'Tarjeta',
-        'yape': 'Yape/Plin',
-        'plin': 'Yape/Plin',
-        'mixed': 'Mixto'
-    };
+  updateOrderStatus: async (orderId: string, newStatus: string, additionalData: any = {}) => {
+    if (!orderId) return { success: false, error: 'ID de orden no válido' };
     
-    const formattedMethod = methodMap[method] || method;
+    const allowedFields = ['status', 'session_id', 'payment_method', 'total', 'subtotal', 'tax', 'discount', 'modality', 'items', 'order_origin'];
+    const cleanPayload: any = { status: newStatus };
+    
+    Object.keys(additionalData).forEach(key => {
+        if (allowedFields.includes(key)) cleanPayload[key] = additionalData[key];
+    });
 
-    const payload = {
-        session_id: parseInt(shiftId), 
-        payment_method: formattedMethod,
-        items: transaction.items,
-        total: transaction.total,
-        subtotal: transaction.subtotal,
-        tax: transaction.tax,
-        discount: transaction.discount,
-        order_origin: 'Web', 
-        customer_name: transaction.customerName || 'Cliente Web',
-        modality: transaction.modality || 'pickup'
-    };
+    try {
+      const { error } = await supabase.from('orders').update(cleanPayload).eq('id', orderId);
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
 
-    return await StorageService.updateOrderStatus(orderId, 'Preparando', payload);
+  /**
+   * LA SOLUCIÓN DEFINITIVA: 
+   * Transforma un pedido web en un pedido de cocina limpio.
+   * Borra el viejo y crea uno nuevo para evitar conflictos de base de datos.
+   */
+  updateWebOrderToKitchen: async (orderId: string, shiftId: string, method: string, transaction: Transaction) => {
+    try {
+        const methodMap: Record<string, string> = {
+            'cash': 'Efectivo', 'card': 'Tarjeta', 'yape': 'Yape/Plin', 'plin': 'Yape/Plin', 'mixed': 'Mixto'
+        };
+        const formattedMethod = methodMap[method] || method;
+
+        // 1. Borrar el pedido "Pendiente" de la web para limpiar la base de datos
+        const { error: deleteError } = await supabase
+            .from('orders')
+            .delete()
+            .eq('id', orderId);
+
+        if (deleteError) {
+            console.warn("No se pudo borrar el pedido original, intentando sobrescribir...");
+        }
+
+        // 2. Insertar un pedido TOTALMENTE NUEVO con los datos validados del POS
+        const newTransaction: Transaction = {
+            ...transaction,
+            id: Date.now().toString(), // Nuevo ID para evitar colisiones
+            status: 'Preparando',
+            orderOrigin: 'Web', // Mantenemos la etiqueta para el monitor
+            shiftId: shiftId,
+            paymentMethod: formattedMethod,
+            modality: (transaction.modality === 'delivery' || transaction.modality === 'pickup') ? transaction.modality : 'pickup'
+        };
+
+        await StorageService.saveTransaction(newTransaction);
+        return { success: true };
+    } catch (err: any) {
+        console.error("Error en transformación de pedido:", err);
+        return { success: false, error: err.message };
+    }
   },
 
   getPurchases: async (): Promise<Purchase[]> => {
@@ -170,8 +184,6 @@ export const StorageService = {
     const { error } = await supabase
       .from('purchases')
       .insert({
-        id: purchase.id,
-        date: purchase.date,
         supplier_id: purchase.supplierId,
         total: purchase.total,
         items: purchase.items
@@ -205,7 +217,6 @@ export const StorageService = {
     return data ? data[0] : supplier;
   },
 
-  // Settings
   getSettings: async (): Promise<StoreSettings> => {
     const defaultSettings: StoreSettings = {
         name: 'Churre Malcriado POS',
@@ -251,14 +262,10 @@ export const StorageService = {
       theme_color: settings.themeColor,
       secondary_color: settings.secondaryColor
     };
-    
-    const { error } = await supabase
-      .from('pos_settings')
-      .upsert(payload);
+    const { error } = await supabase.from('pos_settings').upsert(payload);
     if (error) throw new Error(error.message);
   },
 
-  // Cash Sessions
   getShifts: async (): Promise<CashShift[]> => {
     try {
       const { data, error } = await supabase.from('cash_sessions').select('*').order('id', { ascending: false });
@@ -304,7 +311,6 @@ export const StorageService = {
     };
   },
 
-  // Cash Movements
   getMovements: async (): Promise<CashMovement[]> => {
     try {
       const { data, error } = await supabase.from('cash_transactions').select('*').order('created_at', { ascending: false });

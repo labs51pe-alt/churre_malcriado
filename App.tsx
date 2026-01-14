@@ -42,12 +42,13 @@ const App: React.FC = () => {
   const [ticketData, setTicketData] = useState<any>(null);
   const [initialPurchaseSearch, setInitialPurchaseSearch] = useState('');
   
-  // Toast State para pedidos web
+  // Toast State
   const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('¡Pedido Web enviado a Cocina!');
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'SUCCESS' | 'ERROR'>('SUCCESS');
 
   // Tracking del pedido web que se está cobrando
-  const [pendingWebOrderId, setPendingWebOrderId] = useState<string | null>(null);
+  const [pendingWebOrder, setPendingWebOrder] = useState<Transaction | null>(null);
 
   useEffect(() => {
     const brand = typeof settings.themeColor === 'string' ? settings.themeColor : '#e11d48';
@@ -141,7 +142,7 @@ const App: React.FC = () => {
   const handleImportWebOrder = (order: Transaction) => {
       if (!activeShift) return alert("Debes abrir la caja antes de procesar pagos.");
       setCart(order.items);
-      setPendingWebOrderId(order.id);
+      setPendingWebOrder(order);
       setView(ViewState.POS);
   };
 
@@ -154,7 +155,7 @@ const App: React.FC = () => {
       let tax = settings.pricesIncludeTax ? (total - (total / (1 + settings.taxRate))) : (total * settings.taxRate);
       
       const transaction: Transaction = { 
-          id: pendingWebOrderId || Date.now().toString(), 
+          id: pendingWebOrder?.id || Date.now().toString(), 
           date: new Date().toISOString(), 
           items: [...cart], 
           subtotal: settings.pricesIncludeTax ? (total - tax) : total, 
@@ -165,26 +166,29 @@ const App: React.FC = () => {
           payments, 
           profit: 0, 
           shiftId: activeShift.id,
-          onlineOrderId: pendingWebOrderId || undefined
+          onlineOrderId: pendingWebOrder?.id || undefined,
+          modality: pendingWebOrder?.modality || 'pickup'
       };
       
       try {
-          // 1. INTENTAR ACTUALIZACIÓN EN NUBE (WEB O POS)
-          if (pendingWebOrderId) {
-              const success = await StorageService.updateWebOrderToKitchen(pendingWebOrderId, activeShift.id, transaction.paymentMethod, transaction);
+          if (pendingWebOrder) {
+              // ACTUALIZACIÓN DE PEDIDO WEB
+              const result = await StorageService.updateWebOrderToKitchen(pendingWebOrder.id, activeShift.id, transaction.paymentMethod, transaction);
               
-              setToastMessage(success 
-                  ? "¡Pedido Sincronizado y Enviado a Cocina!" 
-                  : "Aviso: Error de conexión con la nube. El pedido se guardó solo localmente."
-              );
-              setShowToast(true);
-              setTimeout(() => setShowToast(false), 4000);
+              if (result.success) {
+                  setToastType('SUCCESS');
+                  setToastMessage("¡Pedido Sincronizado!");
+              } else {
+                  // ALERT CRÍTICO PARA DEBUG
+                  alert(`DB ERROR: ${result.error}`);
+                  throw new Error(result.error || "Falla de sincronización");
+              }
           } else {
-              // Venta directa del POS
+              // VENTA POS DIRECTA
               await StorageService.saveTransaction(transaction);
           }
 
-          // 2. ACTUALIZAR STOCK (NO BLOQUEANTE)
+          // ACTUALIZAR STOCK
           try {
               await Promise.all(products.map(async p => { 
                   const cartItems = cart.filter(c => c.id === p.id); 
@@ -202,22 +206,30 @@ const App: React.FC = () => {
                   await StorageService.saveProduct({ ...p, stock: newStock, variants: newVariants });
               }));
           } catch (stockError) {
-              console.warn("Error secundario de stock:", stockError);
+              console.warn("Stock sync error:", stockError);
           }
 
-          // 3. MOSTRAR TICKET
+          // TICKET Y LIMPIEZA
           setTicketType('SALE'); 
           setTicketData(transaction); 
           setShowTicket(true);
-          
-          // 4. LIMPIAR ESTADO Y RECARGAR
           setCart([]); 
-          setPendingWebOrderId(null);
-          loadData();
+          setPendingWebOrder(null);
+          loadData(); 
+          
+          if (!pendingWebOrder) {
+              setToastType('SUCCESS');
+              setToastMessage("Venta Exitosa");
+          }
+          setShowToast(true);
+          setTimeout(() => setShowToast(false), 3000);
           
       } catch (err: any) {
-          console.error("Error crítico en Checkout:", err);
-          alert(`Error al procesar el cobro: ${err.message || 'Error de conexión'}`);
+          console.error("Checkout Failure:", err);
+          setToastType('ERROR');
+          setToastMessage(`Falla: ${err.message}`);
+          setShowToast(true);
+          setTimeout(() => setShowToast(false), 8000);
       }
   };
 
@@ -322,7 +334,7 @@ const App: React.FC = () => {
                 <POSView 
                     products={products} cart={cart} activeShift={activeShift} settings={settings} customers={customers} 
                     onAddToCart={handleAddToCart} onUpdateCart={handleUpdateCartQuantity} onRemoveFromCart={handleRemoveFromCart} 
-                    onUpdateDiscount={handleUpdateDiscount} onCheckout={handleCheckout} onClearCart={() => { setCart([]); setPendingWebOrderId(null); }} 
+                    onUpdateDiscount={handleUpdateDiscount} onCheckout={handleCheckout} onClearCart={() => { setCart([]); setPendingWebOrder(null); }} 
                     onOpenCashControl={(action: any) => setShowCashControl(true)} 
                 />
             )}
@@ -345,7 +357,6 @@ const App: React.FC = () => {
                     onAddSupplier={async (s) => { try { await StorageService.saveSupplier(s); setSuppliers([...suppliers, s]); } catch(e:any) { alert(e.message); } }}
                     onRequestNewProduct={(barcode) => { setCurrentProduct({ id: '', name: '', price: 0, category: CATEGORIES[0], stock: 0, variants: [], barcode: barcode || '' }); setIsProductModalOpen(true); }}
                     initialSearchTerm={initialPurchaseSearch} 
-                    /* Fix: Correcting setInitialSearchTerm to setInitialPurchaseSearch */
                     onClearInitialSearch={() => setInitialPurchaseSearch('')}
                 />
             )}
@@ -355,11 +366,13 @@ const App: React.FC = () => {
 
             <CashControlModal isOpen={showCashControl} onClose={() => setShowCashControl(false)} activeShift={activeShift} movements={movements} transactions={transactions} onCashAction={handleCashAction} currency={settings.currency} />
             
-            {/* TOAST PARA PEDIDOS WEB */}
+            {/* TOAST DINÁMICO */}
             {showToast && (
-                <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-[2rem] shadow-2xl z-[100] flex items-center gap-3 animate-fade-in-up border-4 border-white">
-                    <CheckCircle className="w-6 h-6"/>
-                    <span className="font-black uppercase tracking-wider text-sm">{toastMessage}</span>
+                <div 
+                    className={`fixed bottom-10 left-1/2 -translate-x-1/2 px-8 py-4 rounded-[2rem] shadow-2xl z-[100] flex items-center gap-3 animate-fade-in-up border-4 border-white ${toastType === 'SUCCESS' ? 'bg-emerald-600' : 'bg-red-600'}`}
+                >
+                    {toastType === 'SUCCESS' ? <CheckCircle className="w-6 h-6 text-white"/> : <AlertTriangle className="w-6 h-6 text-white"/>}
+                    <span className="font-black uppercase tracking-wider text-sm text-white">{toastMessage}</span>
                 </div>
             )}
 
@@ -401,5 +414,4 @@ const App: React.FC = () => {
   );
 };
 
-/* Fix: Adding missing default export to solve "Module has no default export" error in index.tsx */
 export default App;
