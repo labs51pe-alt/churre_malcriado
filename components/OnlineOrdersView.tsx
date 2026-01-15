@@ -5,10 +5,10 @@ import { StorageService } from '../services/storageService';
 import { supabase } from '../services/supabase';
 import { 
     Clock, RefreshCw, Receipt, Globe, 
-    AlertCircle, Smartphone, Banknote, CreditCard, X, 
+    Smartphone, Banknote, CreditCard, X, 
     ChevronRight, Archive, CheckCircle2,
     MapPin, Loader2, Check, User, Store, Navigation, Eye,
-    Info
+    Printer, FileText
 } from 'lucide-react';
 
 interface OnlineOrdersViewProps {
@@ -185,7 +185,6 @@ export const OnlineOrdersView: React.FC<OnlineOrdersViewProps> = ({ settings, ac
                                     </div>
                                 )}
 
-                                {/* SELLO DE PAGADO REDISEÑADO (NO BLOQUEA) */}
                                 {isPaid && (
                                     <div className="absolute top-12 left-1/2 -translate-x-1/2 -rotate-12 pointer-events-none z-0 opacity-[0.08] select-none">
                                         <span className="text-emerald-600 font-black text-8xl tracking-tighter uppercase italic">PAGADO</span>
@@ -206,7 +205,6 @@ export const OnlineOrdersView: React.FC<OnlineOrdersViewProps> = ({ settings, ac
                                     </div>
                                 </div>
 
-                                {/* MÉTODO DE PAGO SI ESTÁ PAGADO */}
                                 {isPaid && (
                                     <div className="mb-4 bg-emerald-50 border border-emerald-100 p-2.5 rounded-2xl flex items-center gap-2 justify-center">
                                         <div className="text-emerald-600">{getPaymentIcon(order.paymentMethod || 'Efectivo')}</div>
@@ -300,18 +298,6 @@ export const OnlineOrdersView: React.FC<OnlineOrdersViewProps> = ({ settings, ac
                                     </p>
                                 </div>
                             </div>
-                            
-                            {viewOnlyOrder && (
-                                <div className="mt-4 pt-4 border-t border-slate-200 flex items-center gap-3">
-                                    <div className="p-2 bg-emerald-100 text-emerald-600 rounded-xl">
-                                        {getPaymentIcon(viewOnlyOrder.paymentMethod || 'Efectivo')}
-                                    </div>
-                                    <div>
-                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Cobrado mediante</p>
-                                        <p className="font-black text-emerald-700 text-xs uppercase">{viewOnlyOrder.paymentMethod || 'EFECTIVO'}</p>
-                                    </div>
-                                </div>
-                            )}
                         </div>
 
                         <div className={`mb-8 p-10 rounded-[2.5rem] border text-center shadow-inner ${viewOnlyOrder ? 'bg-emerald-50 border-emerald-100' : 'bg-brand-soft border-brand/10'}`}>
@@ -345,21 +331,33 @@ export const OnlineOrdersView: React.FC<OnlineOrdersViewProps> = ({ settings, ac
                                 </button>
                             </div>
                         ) : (
-                            <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl mb-4">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Resumen de Productos</p>
-                                <div className="space-y-2">
-                                    {viewOnlyOrder.items.map((it: any, k: number) => (
-                                        <div key={k} className="flex justify-between text-xs font-bold text-slate-600">
-                                            <span>{it.quantity}x {it.name}</span>
-                                            <span>{settings.currency}{(it.price * it.quantity).toFixed(2)}</span>
+                            <div className="space-y-4">
+                                <div className="p-6 bg-slate-50 border border-slate-100 rounded-3xl">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><FileText className="w-3 h-3"/> Resumen del Cobro</p>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-xs font-bold text-slate-500">
+                                            <span>MÉTODO:</span>
+                                            <span className="text-emerald-600 uppercase italic">{viewOnlyOrder.paymentMethod || 'EFECTIVO'}</span>
                                         </div>
-                                    ))}
+                                        <div className="h-px bg-slate-200 my-1"></div>
+                                        {viewOnlyOrder.items.map((it: any, k: number) => (
+                                            <div key={k} className="flex justify-between text-xs font-bold text-slate-700">
+                                                <span>{it.quantity}x {it.name.substring(0, 20)}</span>
+                                                <span>{settings.currency}{(it.price * it.quantity).toFixed(2)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
+                                
+                                <button 
+                                    onClick={() => onOrderCompleted(viewOnlyOrder)} 
+                                    className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-xl shadow-indigo-100"
+                                >
+                                    <Printer className="w-5 h-5"/> Generar Ticket / PDF
+                                </button>
+                                
+                                <button onClick={() => setViewOnlyOrder(null)} className="w-full py-4 text-slate-400 font-bold uppercase text-[10px] tracking-widest">Cerrar</button>
                             </div>
-                        )}
-                        
-                        {viewOnlyOrder && (
-                            <button onClick={() => setViewOnlyOrder(null)} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-black transition-all">Entendido</button>
                         )}
                     </div>
                 </div>
