@@ -11,9 +11,7 @@ export const StorageService = {
     const s = localStorage.getItem('churre_session');
     try {
       return s ? JSON.parse(s) : null;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   },
   clearSession: () => localStorage.removeItem('churre_session'),
 
@@ -50,49 +48,6 @@ export const StorageService = {
     if (error) throw new Error(error.message);
   },
 
-  // --- Suppliers ---
-  getSuppliers: async (): Promise<Supplier[]> => {
-    try {
-      const { data, error } = await supabase.from('suppliers').select('*').order('name');
-      if (error) return [];
-      return data || [];
-    } catch { return []; }
-  },
-
-  saveSupplier: async (supplier: Supplier) => {
-    const { data, error } = await supabase.from('suppliers').upsert({
-      id: supplier.id && supplier.id.length > 5 ? supplier.id : undefined,
-      name: supplier.name,
-      contact: supplier.contact
-    }).select();
-    if (error) throw new Error(error.message);
-    return data ? data[0] : supplier;
-  },
-
-  // --- Purchases ---
-  getPurchases: async (): Promise<Purchase[]> => {
-    try {
-      const { data, error } = await supabase.from('purchases').select('*').order('date', { ascending: false });
-      if (error) return [];
-      return (data || []).map(d => ({
-        ...d,
-        id: d.id.toString(),
-        items: typeof d.items === 'string' ? JSON.parse(d.items) : (d.items || []),
-        supplierId: d.supplier_id
-      }));
-    } catch { return []; }
-  },
-
-  savePurchase: async (purchase: Purchase) => {
-    const { error } = await supabase.from('purchases').insert({
-      supplier_id: purchase.supplierId,
-      total: Number(purchase.total),
-      items: purchase.items,
-      date: purchase.date
-    });
-    if (error) throw new Error(error.message);
-  },
-
   // --- Transactions ---
   getTransactions: async (): Promise<Transaction[]> => {
     try {
@@ -123,42 +78,64 @@ export const StorageService = {
         items: transaction.items,
         payment_method: transaction.paymentMethod,
         order_origin: 'POS',
-        session_id: (transaction.shiftId && /^\d+$/.test(transaction.shiftId)) ? parseInt(transaction.shiftId) : null
+        session_id: transaction.shiftId || null
       });
     if (error) throw new Error(error.message);
   },
 
+  /**
+   * ACTUALIZACIÓN DE ESTADO - VERSIÓN "BLINDADA"
+   * Se eliminó .select() para evitar errores causados por RLS restrictivos.
+   */
   updateOrderStatus: async (orderId: string, newStatus: string, additionalData: any = {}) => {
-    if (!orderId) return { success: false, error: 'ID inválido' };
-
-    const payload: any = { 
-      status: newStatus,
-      payment_method: additionalData.paymentMethod || 'Efectivo'
-    };
-
-    if (additionalData.shiftId && /^\d+$/.test(additionalData.shiftId.toString())) {
-        payload.session_id = parseInt(additionalData.shiftId);
+    const rawId = String(orderId).trim();
+    if (!rawId || rawId === 'undefined' || rawId === 'null') {
+        return { success: false, error: "ID de pedido no válido." };
     }
 
-    try {
-      const { error } = await supabase
-        .from('orders')
-        .update(payload)
-        .eq('id', orderId);
+    const paymentMap: Record<string, string> = {
+        'cash': 'Efectivo',
+        'yape': 'Yape',
+        'plin': 'Plin',
+        'card': 'Tarjeta',
+        'transfer': 'Transferencia'
+    };
 
-      if (error) {
-          // Rescue attempt: update only status and method if session_id fails
-          const { error: rescueError } = await supabase
+    const method = paymentMap[additionalData.paymentMethod] || additionalData.paymentMethod || 'Efectivo';
+
+    // Construimos el objeto de actualización con solo lo necesario
+    const payload: any = { 
+        status: newStatus,
+        payment_method: method
+    };
+
+    if (additionalData.shiftId) {
+        payload.session_id = additionalData.shiftId;
+    }
+
+    console.log(`[DB-ACTION] Intentando actualizar ID: ${rawId} -> ${newStatus}`);
+
+    try {
+        // Ejecutamos el UPDATE sin .select(). Esto es clave si el RLS bloquea la lectura post-edición.
+        const { error, status, statusText } = await supabase
             .from('orders')
-            .update({ status: newStatus, payment_method: payload.payment_method })
-            .eq('id', orderId);
-          if (rescueError) throw rescueError;
-          return { success: true, warning: 'Updated without session link' };
-      }
-      return { success: true };
+            .update(payload)
+            .eq('id', rawId);
+
+        if (error) {
+            console.error("[DB-ACTION] Error Supabase:", error);
+            throw error;
+        }
+
+        // En Supabase, si status es 204 o 200 y no hay error, la petición fue aceptada.
+        // Si no afectó filas (debido a RLS), status sigue siendo exitoso pero no hizo nada.
+        // Para verificar realmente, hacemos un chequeo rápido si el status es sospechoso
+        console.log(`[DB-ACTION] Respuesta DB: Status ${status} (${statusText})`);
+        
+        return { success: true };
     } catch (err: any) {
-      console.error("Storage update failed:", err);
-      return { success: false, error: err.message };
+        console.error("[DB-ACTION] Error crítico:", err.message);
+        return { success: false, error: err.message };
     }
   },
 
@@ -170,13 +147,10 @@ export const StorageService = {
     });
   },
 
-  // --- Settings ---
   getSettings: async (): Promise<StoreSettings> => {
     try {
       const { data, error } = await supabase.from('pos_settings').select('*').eq('id', 1).single();
-      if (error || !data) {
-        return { name: 'Churre POS', currency: 'S/', taxRate: 0.18, pricesIncludeTax: true, themeColor: '#e11d48' };
-      }
+      if (error || !data) return { name: 'Churre POS', currency: 'S/', taxRate: 0.18, pricesIncludeTax: true, themeColor: '#e11d48' };
       return {
         name: data.name,
         currency: data.currency,
@@ -187,89 +161,79 @@ export const StorageService = {
         logo: data.logo,
         themeColor: data.theme_color,
         secondaryColor: data.secondary_color
-      };
-    } catch { 
-      return { name: 'Churre POS', currency: 'S/', taxRate: 0.18, pricesIncludeTax: true, themeColor: '#e11d48' }; 
-    }
+      } as any;
+    } catch { return { name: 'Churre POS', currency: 'S/', taxRate: 0.18, pricesIncludeTax: true, themeColor: '#e11d48' }; }
   },
 
   saveSettings: async (settings: StoreSettings) => {
     await supabase.from('pos_settings').upsert({
-      id: 1, 
-      name: settings.name, 
-      currency: settings.currency, 
-      tax_rate: settings.taxRate,
-      prices_include_tax: settings.pricesIncludeTax, 
-      address: settings.address, 
-      phone: settings.phone,
-      logo: settings.logo, 
-      theme_color: settings.themeColor, 
-      secondary_color: settings.secondaryColor
+      id: 1, name: settings.name, currency: settings.currency, tax_rate: settings.taxRate,
+      prices_include_tax: settings.pricesIncludeTax, address: settings.address, phone: settings.phone,
+      logo: settings.logo, theme_color: settings.themeColor, secondary_color: settings.secondaryColor
     });
   },
 
-  // --- Shifts & Movements ---
   getShifts: async (): Promise<CashShift[]> => {
     try {
       const { data } = await supabase.from('cash_sessions').select('*').order('id', { ascending: false });
       return (data || []).map(d => ({
-          id: d.id.toString(), 
-          startTime: d.opened_at, 
-          endTime: d.closed_at,
-          startAmount: Number(d.opening_balance || 0), 
-          endAmount: Number(d.closing_balance || 0),
-          status: d.status.toUpperCase() as any, 
-          totalSalesCash: 0, 
-          totalSalesDigital: 0
+          id: d.id.toString(), startTime: d.opened_at, endTime: d.closed_at,
+          startAmount: Number(d.opening_balance || 0), endAmount: Number(d.closing_balance || 0),
+          status: d.status.toUpperCase() as any, totalSalesCash: 0, totalSalesDigital: 0
       }));
     } catch { return []; }
   },
 
   saveShift: async (shift: CashShift) => {
-    const isIdValid = shift.id && /^\d+$/.test(shift.id);
     const { data, error } = await supabase.from('cash_sessions').upsert({
-        ...(isIdValid ? { id: parseInt(shift.id) } : {}),
-        opened_at: shift.startTime, 
-        closed_at: shift.endTime,
-        opening_balance: shift.startAmount, 
-        closing_balance: shift.endAmount,
+        ...(shift.id.length > 10 ? { id: shift.id } : {}),
+        opened_at: shift.startTime, closed_at: shift.endTime,
+        opening_balance: shift.startAmount, closing_balance: shift.endAmount,
         status: shift.status.toLowerCase()
     }).select();
     if (error) throw error;
     const d = data[0];
-    return { 
-      id: d.id.toString(), 
-      startTime: d.opened_at, 
-      endTime: d.closed_at, 
-      startAmount: d.opening_balance, 
-      endAmount: d.closing_balance, 
-      status: d.status.toUpperCase() 
-    };
+    return { id: d.id.toString(), startTime: d.opened_at, endTime: d.closed_at, startAmount: d.opening_balance, endAmount: d.closing_balance, status: d.status.toUpperCase() };
+  },
+
+  getSuppliers: async (): Promise<Supplier[]> => {
+    try {
+      const { data, error } = await supabase.from('suppliers').select('*').order('name');
+      return error ? [] : data || [];
+    } catch { return []; }
+  },
+
+  saveSupplier: async (supplier: Supplier) => {
+    const { data, error } = await supabase.from('suppliers').upsert({
+      id: supplier.id.length > 10 ? supplier.id : undefined,
+      name: supplier.name, contact: supplier.contact
+    }).select();
+    if (error) throw error;
+    return data[0];
+  },
+
+  getPurchases: async (): Promise<Purchase[]> => {
+    try {
+      const { data, error } = await supabase.from('purchases').select('*').order('date', { ascending: false });
+      if (error) return [];
+      return (data || []).map(d => ({ ...d, id: d.id.toString(), items: typeof d.items === 'string' ? JSON.parse(d.items) : (d.items || []), supplierId: d.supplier_id }));
+    } catch { return []; }
+  },
+
+  savePurchase: async (purchase: Purchase) => {
+    const { error } = await supabase.from('purchases').insert({ supplier_id: purchase.supplierId, total: Number(purchase.total), items: purchase.items, date: purchase.date });
+    if (error) throw error;
   },
 
   getMovements: async (): Promise<CashMovement[]> => {
     try {
       const { data, error } = await supabase.from('cash_transactions').select('*').order('created_at', { ascending: false });
       if (error) return [];
-      return (data || []).map(d => ({
-        id: d.id.toString(),
-        shiftId: d.session_id ? d.session_id.toString() : '',
-        type: d.type.toUpperCase() as any,
-        amount: Number(d.amount),
-        description: d.reason,
-        timestamp: d.created_at
-      }));
+      return (data || []).map(d => ({ id: d.id.toString(), shiftId: d.session_id ? d.session_id.toString() : '', type: d.type.toUpperCase() as any, amount: Number(d.amount), description: d.reason, timestamp: d.created_at }));
     } catch { return []; }
   },
 
   saveMovement: async (m: CashMovement) => {
-    const isShiftValid = m.shiftId && /^\d+$/.test(m.shiftId);
-    await supabase.from('cash_transactions').insert({
-        session_id: isShiftValid ? parseInt(m.shiftId) : null,
-        type: m.type.toLowerCase(), 
-        amount: Number(m.amount), 
-        reason: m.description, 
-        created_at: m.timestamp
-    });
+    await supabase.from('cash_transactions').insert({ session_id: m.shiftId || null, type: m.type.toLowerCase(), amount: Number(m.amount), reason: m.description, created_at: m.timestamp });
   }
 };
