@@ -4,23 +4,34 @@ import { Transaction, StoreSettings, CashShift } from '../types';
 import { StorageService } from '../services/storageService';
 import { supabase } from '../services/supabase';
 import { 
-    Clock, Package, RefreshCw, 
-    Flame, Receipt, Globe, CheckCircle2,
-    Truck, Store, Timer, ChevronRight, AlertCircle, Trash2, ArrowRight, User, GripVertical
+    Clock, RefreshCw, Receipt, Globe, 
+    Truck, Navigation, AlertCircle, 
+    Smartphone, Banknote, CreditCard, X, 
+    ChevronRight, Printer, Archive, CheckCircle2,
+    MapPin, Loader2
 } from 'lucide-react';
 
 interface OnlineOrdersViewProps {
     settings: StoreSettings;
     activeShift: CashShift | null;
     onImportToPOS: (order: Transaction) => void;
+    onOrderCompleted: (transaction: Transaction) => void;
 }
 
-export const OnlineOrdersView: React.FC<OnlineOrdersViewProps> = ({ settings, activeShift, onImportToPOS }) => {
+const LOCAL_ARCHIVE_KEY = 'churre_archived_web_orders_v9';
+
+export const OnlineOrdersView: React.FC<OnlineOrdersViewProps> = ({ settings, activeShift, onOrderCompleted }) => {
     const [orders, setOrders] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(false);
     const [processingId, setProcessingId] = useState<string | null>(null);
-    const [draggedOrder, setDraggedOrder] = useState<Transaction | null>(null);
-    const [overColumn, setOverColumn] = useState<string | null>(null);
+    const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<Transaction | null>(null);
+
+    const getArchivedIds = (): string[] => {
+        try {
+            const stored = localStorage.getItem(LOCAL_ARCHIVE_KEY);
+            return stored ? JSON.parse(stored) : [];
+        } catch { return []; }
+    };
 
     const fetchOnlineOrders = useCallback(async (showLoading = true) => {
         if (showLoading) setLoading(true);
@@ -28,26 +39,32 @@ export const OnlineOrdersView: React.FC<OnlineOrdersViewProps> = ({ settings, ac
             const { data, error } = await supabase
                 .from('orders')
                 .select('*')
-                .in('status', ['Pendiente', 'Preparando', 'Listo'])
-                .order('created_at', { ascending: true });
+                .eq('order_origin', 'Web')
+                .order('created_at', { ascending: false });
 
             if (error) throw error;
             
-            const mappedOrders = (data || []).map(d => ({
-                ...d,
-                date: d.created_at,
-                items: d.items || [],
-                paymentMethod: d.payment_method,
-                customerName: d.customer_name,
-                customerPhone: d.customer_phone,
-                address: d.address,
-                modality: d.modality || 'pickup',
-                orderOrigin: d.order_origin
-            }));
+            const archivedIds = getArchivedIds();
+            const mappedOrders = (data || [])
+                .map(d => ({
+                    ...d,
+                    id: d.id, 
+                    date: d.created_at,
+                    items: typeof d.items === 'string' ? JSON.parse(d.items) : (d.items || []),
+                    total: Number(d.total || 0),
+                    paymentMethod: d.payment_method,
+                    customerName: d.customer_name,
+                    customerPhone: d.customer_phone,
+                    address: d.address,
+                    modality: d.modality || 'pickup',
+                    orderOrigin: d.order_origin,
+                    status: d.status
+                }))
+                .filter(o => !archivedIds.includes(o.id));
             
             setOrders(mappedOrders);
         } catch (err) {
-            console.error("Error al cargar pedidos del monitor:", err);
+            console.error("Fetch Error:", err);
         } finally {
             if (showLoading) setLoading(false);
         }
@@ -55,222 +72,207 @@ export const OnlineOrdersView: React.FC<OnlineOrdersViewProps> = ({ settings, ac
 
     useEffect(() => {
         fetchOnlineOrders(true);
-        const channel = supabase.channel('monitor-realtime')
-            .on('postgres_changes', { event: '*', table: 'orders', schema: 'public' }, () => fetchOnlineOrders(false))
+        const channel = supabase.channel('monitor-web-final-v2')
+            .on('postgres_changes', { event: '*', table: 'orders', schema: 'public', filter: "order_origin=eq.Web" }, () => fetchOnlineOrders(false))
             .subscribe();
         return () => { supabase.removeChannel(channel); };
     }, [fetchOnlineOrders]);
 
-    const updateOrderStatus = async (id: string, newStatus: string) => {
-        setProcessingId(id);
-        const success = await StorageService.updateOrderStatus(id, newStatus);
-        if (!success) alert("Error al actualizar el estado.");
-        setProcessingId(null);
-    };
+    const handleQuickPayment = async (method: string) => {
+        if (!selectedOrderForPayment || !activeShift) return;
+        
+        const orderId = selectedOrderForPayment.id;
+        const orderToClose = selectedOrderForPayment;
+        
+        setProcessingId(orderId);
+        setSelectedOrderForPayment(null);
 
-    const handleDragStart = (e: React.DragEvent, order: Transaction) => {
-        setDraggedOrder(order);
-        e.dataTransfer.setData('orderId', order.id);
-        // Efecto visual de transparencia al arrastrar
-        if (e.currentTarget instanceof HTMLElement) {
-            e.currentTarget.style.opacity = '0.4';
+        try {
+            // EJECUCIÓN EN LA NUBE - Forzamos el estado COMPLETADO
+            const result = await StorageService.updateOrderStatus(orderId, 'Completado', {
+                shiftId: activeShift.id,
+                paymentMethod: method,
+                total: orderToClose.total
+            });
+
+            if (result.success) {
+                // ACTUALIZACIÓN LOCAL
+                setOrders(prev => prev.map(o => 
+                    o.id === orderId ? { ...o, status: 'Completado', paymentMethod: method } : o
+                ));
+                
+                onOrderCompleted({
+                    ...orderToClose,
+                    paymentMethod: method,
+                    payments: [{ method: method as any, amount: orderToClose.total }],
+                    shiftId: activeShift.id,
+                    status: 'Completado'
+                });
+            } else {
+                alert(`NO SE PUDO ACTUALIZAR EL PEDIDO: ${result.error}`);
+            }
+        } catch (err: any) {
+            alert(`Error crítico en la red: ${err.message}`);
+        } finally {
+            setProcessingId(null);
+            // Sincronización de seguridad
+            setTimeout(() => fetchOnlineOrders(false), 800);
         }
     };
 
-    const handleDragEnd = (e: React.DragEvent) => {
-        setDraggedOrder(null);
-        setOverColumn(null);
-        if (e.currentTarget instanceof HTMLElement) {
-            e.currentTarget.style.opacity = '1';
+    const handleArchiveOrder = (orderId: string) => {
+        const archived = getArchivedIds();
+        if (!archived.includes(orderId)) {
+            localStorage.setItem(LOCAL_ARCHIVE_KEY, JSON.stringify([...archived, orderId]));
         }
+        setOrders(prev => prev.filter(o => o.id !== orderId));
     };
 
-    const handleDragOver = (e: React.DragEvent, columnStatus: string) => {
-        e.preventDefault();
-        setOverColumn(columnStatus);
+    const handleReprint = (order: Transaction) => {
+        onOrderCompleted(order);
     };
-
-    const handleDrop = async (e: React.DragEvent, targetStatus: string) => {
-        e.preventDefault();
-        setOverColumn(null);
-        const orderId = e.dataTransfer.getData('orderId');
-        const order = orders.find(o => o.id === orderId);
-
-        if (!order || order.status === targetStatus) return;
-
-        // Validaciones de flujo lógico
-        if (order.status === 'Pendiente' && targetStatus === 'Preparando') {
-            onImportToPOS(order); // Requiere cobrar
-            return;
-        }
-
-        if (order.status === 'Pendiente' && targetStatus === 'Listo') {
-            alert("El pedido debe ser cobrado antes de estar listo.");
-            return;
-        }
-
-        // Si es movimiento válido, actualizar DB
-        updateOrderStatus(orderId, targetStatus);
-    };
-
-    const getTimeElapsed = (date: string) => {
-        const diff = Math.floor((new Date().getTime() - new Date(date).getTime()) / 60000);
-        if (diff < 1) return 'Ahora';
-        return `${diff}m`;
-    };
-
-    const OrderCard: React.FC<{ order: Transaction }> = ({ order }) => (
-        <div 
-            draggable 
-            onDragStart={(e) => handleDragStart(e, order)}
-            onDragEnd={handleDragEnd}
-            className={`
-                bg-white border border-slate-100 rounded-[1.8rem] shadow-sm p-4 lg:p-5 
-                hover:shadow-md transition-all animate-fade-in-up relative overflow-hidden group 
-                cursor-grab active:cursor-grabbing select-none
-                ${processingId === order.id ? 'opacity-50 animate-pulse' : ''}
-            `}
-        >
-            <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${order.modality === 'delivery' ? 'bg-indigo-500' : 'bg-cyan-500'}`}></div>
-            
-            <div className="flex justify-between items-start mb-3">
-                <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-black uppercase">
-                    <Timer className="w-3.5 h-3.5 text-brand"/> {getTimeElapsed(order.date)}
-                </div>
-                <div className="flex gap-1.5 items-center">
-                    <GripVertical className="w-4 h-4 text-slate-200 group-hover:text-slate-400 transition-colors" />
-                    <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${order.orderOrigin === 'Web' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
-                        {order.orderOrigin || 'POS'}
-                    </span>
-                </div>
-            </div>
-
-            <div className="mb-4">
-                <h4 className="font-black text-slate-800 text-sm truncate uppercase flex items-center gap-2">
-                    <User className="w-3 h-3 text-slate-300 shrink-0"/>
-                    {order.customerName || 'Cliente'}
-                </h4>
-            </div>
-
-            <div className="bg-slate-50/80 rounded-2xl p-3 mb-4 space-y-2 border border-slate-100/50">
-                {order.items.map((item: any, idx: number) => (
-                    <div key={idx} className="flex justify-between items-start text-[10px] font-bold">
-                        <span className="text-brand w-4 lg:w-5 shrink-0">{item.quantity}</span>
-                        <div className="flex-1 flex flex-col">
-                            <span className="text-slate-700 uppercase leading-tight">{item.name}</span>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            <div className="flex items-center justify-between mb-4 px-1">
-                <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Total</span>
-                <span className="text-base lg:text-lg font-black text-slate-800 tracking-tighter">{settings.currency}{order.total.toFixed(2)}</span>
-            </div>
-
-            <div className="flex gap-2">
-                {order.status === 'Pendiente' && (
-                    <button onClick={() => onImportToPOS(order)} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-black text-[9px] uppercase tracking-wider hover:bg-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-200 disabled:opacity-30">
-                        <Receipt className="w-3.5 h-3.5 text-brand"/> Cobrar
-                    </button>
-                )}
-                {order.status === 'Preparando' && (
-                    <button onClick={() => updateOrderStatus(order.id, 'Listo')} className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-black text-[9px] uppercase tracking-wider hover:bg-rose-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-200">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-rose-200"/> Listo
-                    </button>
-                )}
-                {order.status === 'Listo' && (
-                    <button onClick={() => updateOrderStatus(order.id, 'Completado')} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-black text-[9px] uppercase tracking-wider hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200">
-                        <ArrowRight className="w-3.5 h-3.5 text-emerald-200"/> Entregado
-                    </button>
-                )}
-            </div>
-        </div>
-    );
-
-    const KanbanColumn = ({ title, icon: Icon, color, status, ordersList }: any) => (
-        <div 
-            onDragOver={(e) => handleDragOver(e, status)}
-            onDrop={(e) => handleDrop(e, status)}
-            className={`
-                flex-1 flex flex-col min-w-[280px] lg:min-w-[320px] h-full rounded-[2.5rem] p-2 transition-all duration-300
-                ${overColumn === status ? 'bg-brand-soft ring-4 ring-brand-medium scale-[1.01]' : 'bg-transparent'}
-            `}
-        >
-            <div className="flex items-center justify-between mb-4 px-4 pt-2">
-                <div className="flex items-center gap-2">
-                    <div className={`p-2 rounded-xl bg-white shadow-sm border border-slate-100 ${color}`}>
-                        <Icon className="w-5 h-5 lg:w-6 lg:h-6"/>
-                    </div>
-                    <h3 className="font-black text-slate-800 uppercase tracking-tighter text-xs lg:text-sm">{title}</h3>
-                </div>
-                <span className="bg-slate-200 text-slate-500 font-black text-[9px] lg:text-[10px] px-2.5 py-1 rounded-full">{ordersList.length}</span>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pb-10 px-2">
-                {ordersList.map((order: Transaction) => (
-                    <OrderCard key={order.id} order={order} />
-                ))}
-                {ordersList.length === 0 && (
-                    <div className="border-2 border-dashed border-slate-200 rounded-[2.5rem] h-32 flex flex-col items-center justify-center text-slate-200 bg-white/40">
-                        <Package className="w-8 h-8 mb-2 opacity-10"/>
-                        <span className="text-[9px] font-bold uppercase opacity-50 tracking-widest text-slate-400">Sin pedidos</span>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
 
     return (
-        <div className="h-full flex flex-col bg-[#f8fafc] p-4 lg:p-6 overflow-hidden">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 lg:mb-8 gap-4">
+        <div className="h-full flex flex-col bg-[#f1f5f9] p-4 lg:p-8 overflow-hidden">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                 <div>
-                    <h1 className="text-xl lg:text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-                        <Globe className="w-7 h-7 text-brand"/> Monitor Kanban Unificado
+                    <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                        <Globe className="w-9 h-9 text-brand"/> Monitor Pedidos Web
                     </h1>
-                    <p className="text-[9px] lg:text-[10px] text-slate-500 font-bold uppercase tracking-widest ml-1">Sincronización Total: Web + POS</p>
+                    <p className="text-[11px] text-slate-500 font-bold uppercase tracking-[0.2em] ml-1">Sincronización Cloud Activa</p>
                 </div>
 
                 <div className="flex items-center gap-4">
                     <button 
                         onClick={() => fetchOnlineOrders(true)} 
-                        className="p-3 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-brand transition-all shadow-sm active:scale-95"
+                        className="p-4 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-brand transition-all shadow-sm active:scale-95"
                     >
-                        <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                        <RefreshCw className={`w-6 h-6 ${loading ? 'animate-spin' : ''}`} />
                     </button>
                 </div>
             </div>
 
-            <div className="flex-1 flex gap-5 lg:gap-6 overflow-x-auto pb-4 custom-scrollbar items-start h-full">
-                <KanbanColumn 
-                    title="Por Cobrar" 
-                    icon={Receipt} 
-                    color="text-orange-500" 
-                    status="Pendiente" 
-                    ordersList={orders.filter(o => o.status === 'Pendiente')}
-                />
-                
-                <KanbanColumn 
-                    title="En Cocina" 
-                    icon={Flame} 
-                    color="text-rose-500" 
-                    status="Preparando" 
-                    ordersList={orders.filter(o => o.status === 'Preparando')}
-                />
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-10">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
+                    {orders.map((order) => {
+                        const isPaid = order.status === 'Completado';
+                        const isDelivery = order.modality?.toLowerCase() === 'delivery';
+                        const isProcessing = processingId === order.id;
+                        
+                        return (
+                            <div key={order.id} className={`bg-white rounded-[2.5rem] shadow-sm border border-slate-100 p-6 transition-all duration-300 relative overflow-hidden flex flex-col ${isPaid ? 'bg-emerald-50/10 border-emerald-500/20 shadow-emerald-100' : 'hover:shadow-xl hover:border-brand/20'}`}>
+                                
+                                {isProcessing && (
+                                    <div className="absolute inset-0 z-[60] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center text-brand font-black animate-fade-in">
+                                        <Loader2 className="w-10 h-10 animate-spin mb-2"/>
+                                        <span className="text-[10px] uppercase tracking-widest">Sincronizando...</span>
+                                    </div>
+                                )}
 
-                <KanbanColumn 
-                    title="Listos" 
-                    icon={CheckCircle2} 
-                    color="text-emerald-500" 
-                    status="Listo" 
-                    ordersList={orders.filter(o => o.status === 'Listo')}
-                />
+                                {isPaid && !isProcessing && (
+                                    <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none animate-fade-in bg-white/60">
+                                        <div className="border-[12px] border-emerald-500 rounded-[2.5rem] px-8 py-4 transform -rotate-12 bg-white shadow-2xl flex flex-col items-center">
+                                            <span className="text-emerald-600 font-black text-4xl tracking-tighter uppercase italic leading-none">PAGADO</span>
+                                            <span className="text-emerald-500 font-bold text-[8px] mt-1 uppercase tracking-[0.3em]">CLOUD OK</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className={`absolute top-0 right-0 px-6 py-2 rounded-bl-3xl font-black text-[10px] uppercase tracking-widest text-white z-10 ${isDelivery ? 'bg-indigo-600' : 'bg-cyan-500'}`}>
+                                    {isDelivery ? 'Delivery' : 'Recojo'}
+                                </div>
+
+                                <div className="mb-4 flex items-start gap-4 pt-2">
+                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-inner ${isPaid ? 'bg-emerald-100 text-emerald-500' : 'bg-slate-100 text-slate-400'}`}>
+                                        {isPaid ? <CheckCircle2 className="w-7 h-7" /> : <Clock className="w-7 h-7" />}
+                                    </div>
+                                    <div className="flex-1 truncate">
+                                        <h4 className="font-black text-lg leading-tight uppercase truncate text-slate-800">{order.customerName || 'Cliente Web'}</h4>
+                                        <p className="text-xs font-bold text-slate-400 mt-0.5">{order.customerPhone || 'Sin teléfono'}</p>
+                                    </div>
+                                </div>
+
+                                {isDelivery && (
+                                    <div className="mb-4 bg-blue-50 border-2 border-blue-100 p-4 rounded-3xl flex items-start gap-3 shadow-inner">
+                                        <MapPin className="w-6 h-6 text-blue-600 shrink-0 mt-1" />
+                                        <div className="flex-1">
+                                            <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Dirección Envío</p>
+                                            <p className="text-[15px] font-black text-blue-900 leading-tight uppercase italic break-words">
+                                                {order.address || 'REVISAR WHATSAPP'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex-1 rounded-2xl p-4 mb-5 border border-slate-100 bg-slate-50/50 space-y-2">
+                                    {order.items.map((item: any, idx: number) => (
+                                        <div key={idx} className="flex justify-between items-start text-[11px] font-bold text-slate-700">
+                                            <span className="text-brand w-6 shrink-0">{item.quantity}x</span>
+                                            <span className="flex-1 uppercase">{item.name}</span>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="flex items-end justify-between mb-6 pt-2 border-t border-slate-200">
+                                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Monto Web</span>
+                                    <div className="flex items-baseline gap-1 text-slate-900">
+                                        <span className="text-sm font-bold opacity-50">{settings.currency}</span>
+                                        <span className="text-3xl font-black tracking-tighter">{(order.total || 0).toFixed(2)}</span>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2 relative z-50">
+                                    {!isPaid ? (
+                                        <button 
+                                            onClick={() => setSelectedOrderForPayment(order)}
+                                            disabled={!activeShift || isProcessing}
+                                            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-black transition-all flex items-center justify-center gap-3 shadow-xl disabled:opacity-20 active:scale-95"
+                                        >
+                                            <Receipt className="w-5 h-5 text-brand"/> COBRAR PEDIDO
+                                        </button>
+                                    ) : (
+                                        <>
+                                            <button onClick={() => handleReprint(order)} className="flex-1 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95"><Printer className="w-4 h-4"/> Ticket</button>
+                                            <button onClick={() => handleArchiveOrder(order.id)} className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-95"><Archive className="w-4 h-4"/> Archivar</button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
-            
-            <style>{`
-                .cursor-grab { cursor: grab; }
-                .cursor-grabbing { cursor: grabbing; }
-            `}</style>
+
+            {selectedOrderForPayment && (
+                <div className="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
+                    <div className="bg-white w-full max-w-md rounded-[3rem] p-8 shadow-2xl animate-fade-in-up border border-white">
+                        <div className="flex justify-between items-center mb-8">
+                            <h3 className="font-black text-2xl text-slate-800 tracking-tight uppercase italic leading-none">Confirmar Pago</h3>
+                            <button onClick={() => setSelectedOrderForPayment(null)} className="w-10 h-10 flex items-center justify-center bg-slate-50 rounded-full text-slate-400"><X className="w-6 h-6"/></button>
+                        </div>
+
+                        <div className="mb-8 p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 text-center">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Monto de la Web</p>
+                            <p className="text-5xl font-black text-slate-900 tracking-tighter">{settings.currency}{(selectedOrderForPayment.total || 0).toFixed(2)}</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3">
+                            <button onClick={() => handleQuickPayment('cash')} className="p-5 bg-emerald-50 border-2 border-emerald-100 rounded-3xl flex items-center justify-between hover:bg-emerald-600 hover:text-white transition-all group">
+                                <span className="font-black uppercase tracking-widest text-sm">Efectivo</span>
+                                <Banknote className="w-6 h-6 text-emerald-500 group-hover:text-white"/>
+                            </button>
+                            <button onClick={() => handleQuickPayment('yape')} className="p-5 bg-brand-soft border-2 border-brand-medium rounded-3xl flex items-center justify-between hover:bg-brand hover:text-white transition-all group">
+                                <span className="font-black uppercase tracking-widest text-sm">Yape / Plin</span>
+                                <Smartphone className="w-6 h-6 text-brand group-hover:text-white"/>
+                            </button>
+                            <button onClick={() => handleQuickPayment('card')} className="p-5 bg-blue-50 border-2 border-blue-100 rounded-3xl flex items-center justify-between hover:bg-blue-600 hover:text-white transition-all group">
+                                <span className="font-black uppercase tracking-widest text-sm">Tarjeta</span>
+                                <CreditCard className="w-6 h-6 text-blue-500 group-hover:text-white"/>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
