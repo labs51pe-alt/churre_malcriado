@@ -14,7 +14,7 @@ import { OnlineOrdersView } from './components/OnlineOrdersView';
 import { CashControlModal } from './components/CashControlModal';
 import { POSView } from './components/POSView';
 import { DEFAULT_SETTINGS, CATEGORIES } from './constants';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, X, Package, Tag, DollarSign, Layers, ImageIcon, Save, AlertCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -137,7 +137,6 @@ const App: React.FC = () => {
       setShowToast(true); 
       setTimeout(() => setShowToast(false), 3000);
       
-      // Actualizar datos de caja
       loadData();
   };
 
@@ -176,14 +175,12 @@ const App: React.FC = () => {
               await StorageService.saveTransaction(transaction);
           }
           
-          // ACTIVAR TICKET Y LIMPIAR
           setTicketType('SALE'); 
           setTicketData(transaction); 
           setShowTicket(true);
           setCart([]); 
           setPendingWebOrder(null);
           
-          // REFRESCAR DATOS PARA CAJA
           await loadData(); 
           
           setToastType('SUCCESS'); 
@@ -228,14 +225,20 @@ const App: React.FC = () => {
       try {
           await StorageService.saveProduct(currentProduct);
           setIsProductModalOpen(false);
-          await loadData();
-      } catch (e: any) { alert(e.message); }
+          loadData();
+          setToastMessage("Producto guardado correctamente");
+          setToastType('SUCCESS');
+          setShowToast(true);
+          setTimeout(() => setShowToast(false), 3000);
+      } catch (e: any) { 
+        alert(`Error al guardar: ${e.message}\nVerifica que la columna 'stock' exista en Supabase.`); 
+      }
   };
 
   if (isInitializing) return (
     <div className="h-screen flex flex-col items-center justify-center bg-[#fef2f2]">
         <RefreshCw className="w-12 h-12 text-rose-600 animate-spin" />
-        <p className="mt-4 font-bold text-rose-600">Sincronizando con Supabase...</p>
+        <p className="mt-4 font-bold text-rose-600 uppercase text-[10px] tracking-widest">Sincronizando Sistema v14...</p>
     </div>
   );
 
@@ -248,39 +251,134 @@ const App: React.FC = () => {
               <POSView products={products} cart={cart} activeShift={activeShift} settings={settings} onAddToCart={handleAddToCart} onUpdateCart={handleUpdateCartQuantity} onRemoveItem={handleRemoveFromCart} onUpdateDiscount={handleUpdateDiscount} onCheckout={handleCheckout} onClearCart={() => { setCart([]); setPendingWebOrder(null); }} onOpenCashControl={() => setShowCashControl(true)} />
           )}
           {view === ViewState.ONLINE_ORDERS && (
-              <OnlineOrdersView 
-                settings={settings} 
-                activeShift={activeShift} 
-                onImportToPOS={handleImportWebOrder} 
-                onOrderCompleted={handleOnlineOrderCompleted}
-              />
+              <OnlineOrdersView settings={settings} activeShift={activeShift} onImportToPOS={handleImportWebOrder} onOrderCompleted={handleOnlineOrderCompleted} />
           )}
-          {view === ViewState.INVENTORY && <InventoryView products={products} settings={settings} transactions={transactions} purchases={purchases} onNewProduct={() => { setCurrentProduct({ id: '', name: '', price: 0, category: CATEGORIES[0], stock: 0, variants: [] }); setIsProductModalOpen(true); }} onEditProduct={(p) => { setCurrentProduct(p); setIsProductModalOpen(true); }} onDeleteProduct={async (id) => { if(confirm('¿Eliminar?')) { await StorageService.deleteProduct(id); loadData(); } }} onGoToPurchase={(name) => { setInitialPurchaseSearch(name); setView(ViewState.PURCHASES); }} />}
-          {view === ViewState.PURCHASES && <PurchasesView products={products} suppliers={suppliers} purchases={purchases} settings={settings} onProcessPurchase={async (p) => { await StorageService.savePurchase(p); loadData(); }} onAddSupplier={async (s) => { await StorageService.saveSupplier(s); loadData(); }} onRequestNewProduct={(barcode) => { setCurrentProduct({ id: '', name: '', price: 0, category: CATEGORIES[0], stock: 0, variants: [], barcode: barcode || '' }); setIsProductModalOpen(true); }} initialSearchTerm={initialPurchaseSearch} onClearInitialSearch={() => setInitialPurchaseSearch('')} />}
+          {view === ViewState.INVENTORY && <InventoryView products={products} settings={settings} transactions={transactions} purchases={purchases} onNewProduct={() => { setCurrentProduct({ id: '', name: '', price: 0, category: CATEGORIES[0], stock: 0, variants: [], image: '' }); setIsProductModalOpen(true); }} onEditProduct={(p) => { setCurrentProduct(p); setIsProductModalOpen(true); }} onDeleteProduct={async (id) => { if(confirm('¿Eliminar?')) { await StorageService.deleteProduct(id); loadData(); } }} onGoToPurchase={(name) => { setInitialPurchaseSearch(name); setView(ViewState.PURCHASES); }} />}
+          {view === ViewState.PURCHASES && <PurchasesView products={products} suppliers={suppliers} purchases={purchases} settings={settings} onProcessPurchase={async (p) => { await StorageService.savePurchase(p); loadData(); }} onAddSupplier={async (s) => { await StorageService.saveSupplier(s); loadData(); }} onRequestNewProduct={(barcode) => { setCurrentProduct({ id: '', name: '', price: 0, category: CATEGORIES[0], stock: 0, variants: [], barcode: barcode || '', image: '' }); setIsProductModalOpen(true); }} initialSearchTerm={initialPurchaseSearch} onClearInitialSearch={() => setInitialPurchaseSearch('')} />}
           {view === ViewState.ADMIN && <AdminView transactions={transactions} products={products} settings={settings} />}
           {view === ViewState.REPORTS && <ReportsView transactions={transactions} settings={settings} />}
           {view === ViewState.SETTINGS && <SettingsView settings={settings} onSaveSettings={async (s) => { await StorageService.saveSettings(s); loadData(); }} />}
 
           <CashControlModal isOpen={showCashControl} onClose={() => setShowCashControl(false)} activeShift={activeShift} movements={movements} transactions={transactions} onCashAction={handleCashAction} currency={settings.currency} />
           
-          {showToast && <div className={`fixed bottom-10 left-1/2 -translate-x-1/2 px-6 py-3 rounded-2xl shadow-2xl text-white font-bold z-[100] ${toastType === 'SUCCESS' ? 'bg-emerald-600' : 'bg-red-600'}`}>{toastMessage}</div>}
+          {showToast && <div className={`fixed bottom-10 left-1/2 -translate-x-1/2 px-8 py-4 rounded-2xl shadow-2xl text-white font-black z-[200] animate-fade-in-up uppercase text-xs tracking-widest ${toastType === 'SUCCESS' ? 'bg-emerald-600' : 'bg-red-600'}`}>{toastMessage}</div>}
           
+          {/* MODAL DE PRODUCTO MEJORADO */}
           {isProductModalOpen && currentProduct && (
-              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                  <div className="bg-white rounded-3xl w-full max-w-lg p-6">
-                      <h2 className="text-xl font-bold mb-4 tracking-tight">{currentProduct.id ? 'Editar' : 'Nuevo'} Producto</h2>
-                      <div className="space-y-4">
-                          <input className="w-full p-3 border rounded-xl" placeholder="Nombre" value={currentProduct.name} onChange={e => setCurrentProduct({...currentProduct, name: e.target.value})} />
-                          <input type="number" className="w-full p-3 border rounded-xl" placeholder="Precio" value={currentProduct.price || ''} onChange={e => setCurrentProduct({...currentProduct, price: parseFloat(e.target.value)})} />
-                          <button onClick={handleSaveProduct} className="w-full py-4 bg-brand text-white rounded-xl font-bold shadow-lg">Guardar Producto</button>
-                          <button onClick={() => setIsProductModalOpen(false)} className="w-full py-3 text-slate-400 font-bold">Cancelar</button>
+              <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-fade-in overflow-y-auto">
+                  <div className="bg-white rounded-[3rem] w-full max-w-2xl p-10 shadow-2xl animate-fade-in-up border border-white/20 my-auto">
+                      <div className="flex justify-between items-center mb-8">
+                        <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 bg-brand-soft rounded-2xl flex items-center justify-center text-brand">
+                                <Package className="w-8 h-8"/>
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase italic">{currentProduct.id ? 'Editar' : 'Nuevo'} Producto</h2>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sincronización Supabase Cloud</p>
+                            </div>
+                        </div>
+                        <button onClick={() => setIsProductModalOpen(false)} className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 hover:text-brand transition-all"><X className="w-7 h-7"/></button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                          {/* Columna Izquierda: Datos Principales */}
+                          <div className="space-y-6">
+                              <div>
+                                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><Layers className="w-3 h-3"/> Nombre del Ítem</label>
+                                  <input 
+                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-brand transition-all" 
+                                    placeholder="Nombre" 
+                                    value={currentProduct.name} 
+                                    onChange={e => setCurrentProduct({...currentProduct, name: e.target.value})} 
+                                  />
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><DollarSign className="w-3 h-3"/> Precio</label>
+                                      <input 
+                                        type="number" 
+                                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-slate-800 outline-none focus:border-brand transition-all" 
+                                        placeholder="0.00" 
+                                        value={currentProduct.price || ''} 
+                                        onChange={e => setCurrentProduct({...currentProduct, price: parseFloat(e.target.value) || 0})} 
+                                      />
+                                  </div>
+                                  <div>
+                                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><Package className="w-3 h-3"/> Stock</label>
+                                      <input 
+                                        type="number" 
+                                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-slate-800 outline-none focus:border-brand transition-all" 
+                                        placeholder="0" 
+                                        value={currentProduct.stock || '0'} 
+                                        onChange={e => setCurrentProduct({...currentProduct, stock: parseInt(e.target.value) || 0})} 
+                                      />
+                                  </div>
+                              </div>
+
+                              <div>
+                                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">Categoría</label>
+                                  <select 
+                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-brand transition-all"
+                                    value={currentProduct.category}
+                                    onChange={e => setCurrentProduct({...currentProduct, category: e.target.value})}
+                                  >
+                                      {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                  </select>
+                              </div>
+
+                              <div>
+                                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><Tag className="w-3 h-3"/> Código de Barras</label>
+                                  <input 
+                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs font-bold text-slate-600 outline-none focus:border-brand transition-all" 
+                                    placeholder="Opcional" 
+                                    value={currentProduct.barcode || ''} 
+                                    onChange={e => setCurrentProduct({...currentProduct, barcode: e.target.value})} 
+                                  />
+                              </div>
+                          </div>
+
+                          {/* Columna Derecha: Imagen */}
+                          <div className="space-y-6">
+                              <div>
+                                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><ImageIcon className="w-3 h-3"/> URL de la Imagen</label>
+                                  <input 
+                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-500 outline-none focus:border-brand transition-all text-xs" 
+                                    placeholder="https://..." 
+                                    value={currentProduct.image || ''} 
+                                    onChange={e => setCurrentProduct({...currentProduct, image: e.target.value})} 
+                                  />
+                              </div>
+
+                              <div className="aspect-square bg-slate-50 rounded-[2rem] border-4 border-dashed border-slate-100 flex items-center justify-center overflow-hidden relative group">
+                                  {currentProduct.image ? (
+                                      <img src={currentProduct.image} alt="Preview" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                                  ) : (
+                                      <div className="text-center p-6">
+                                          <ImageIcon className="w-12 h-12 text-slate-200 mx-auto mb-2"/>
+                                          <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest leading-relaxed">Pega una URL arriba para previsualizar</p>
+                                      </div>
+                                  )}
+                              </div>
+
+                              <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3">
+                                <AlertCircle className="w-5 h-5 text-amber-500 shrink-0"/>
+                                <p className="text-[10px] font-bold text-amber-700 leading-tight uppercase italic">Asegúrate de que la URL termine en .jpg, .png o .webp para que se vea correctamente.</p>
+                              </div>
+                          </div>
+                      </div>
+
+                      <div className="mt-10 flex gap-4">
+                          <button onClick={() => setIsProductModalOpen(false)} className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-xs tracking-[0.2em] hover:bg-slate-200 transition-all">Cancelar</button>
+                          <button onClick={handleSaveProduct} className="flex-[2] py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3">
+                            <Save className="w-5 h-5 text-brand"/> Guardar Cambios
+                          </button>
                       </div>
                   </div>
               </div>
           )}
       </Layout>
 
-      {/* TICKET EN CAPA SUPERIOR (Z-999) */}
       {showTicket && ticketData && (
           <Ticket type={ticketType} data={ticketData} settings={settings} onClose={() => setShowTicket(false)} />
       )}

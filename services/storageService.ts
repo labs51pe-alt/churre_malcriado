@@ -23,23 +23,42 @@ export const StorageService = {
       return (data || []).map(item => ({
         ...item,
         variants: Array.isArray(item.variants) ? item.variants : [],
-        hasVariants: Array.isArray(item.variants) && item.variants.length > 0
+        hasVariants: Array.isArray(item.variants) && item.variants.length > 0,
+        stock: Number(item.stock || 0)
       }));
     } catch { return []; }
   },
   
   saveProduct: async (product: Product) => {
-    const { data, error } = await supabase.from('menu_items').upsert({
-        id: product.id && product.id.length > 5 ? product.id : undefined,
+    // Definimos el objeto base
+    const payload: any = {
         name: product.name,
-        price: product.price,
+        price: Number(product.price),
         category: product.category,
-        image: product.image,
+        image: product.image || '',
         variants: product.variants || [],
-        stock: product.stock,
-        barcode: product.barcode
-      }).select();
-    if (error) throw new Error(error.message);
+        stock: Number(product.stock || 0),
+        barcode: product.barcode || null
+    };
+
+    // Solo incluimos ID si es una edición (UUID largo)
+    if (product.id && product.id.length > 5) {
+        payload.id = product.id;
+    }
+
+    const { data, error } = await supabase
+      .from('menu_items')
+      .upsert(payload)
+      .select();
+
+    if (error) {
+        // Error de columna faltante (PGRST204 o mensaje descriptivo)
+        if (error.code === 'PGRST204' || error.message.includes('column')) {
+            const missingColumn = error.message.split("'")[1] || 'desconocida';
+            throw new Error(`ESTRUCTURA INCOMPLETA: Falta la columna '${missingColumn}' en Supabase. \n\nSOLUCIÓN: Ejecuta esto en el SQL Editor de Supabase:\nALTER TABLE menu_items ADD COLUMN ${missingColumn} text;`);
+        }
+        throw new Error(error.message);
+    }
     return data ? data[0] : product;
   },
 
@@ -83,10 +102,6 @@ export const StorageService = {
     if (error) throw new Error(error.message);
   },
 
-  /**
-   * ACTUALIZACIÓN DE ESTADO - VERSIÓN "BLINDADA"
-   * Se eliminó .select() para evitar errores causados por RLS restrictivos.
-   */
   updateOrderStatus: async (orderId: string, newStatus: string, additionalData: any = {}) => {
     const rawId = String(orderId).trim();
     if (!rawId || rawId === 'undefined' || rawId === 'null') {
@@ -103,7 +118,6 @@ export const StorageService = {
 
     const method = paymentMap[additionalData.paymentMethod] || additionalData.paymentMethod || 'Efectivo';
 
-    // Construimos el objeto de actualización con solo lo necesario
     const payload: any = { 
         status: newStatus,
         payment_method: method
@@ -113,28 +127,15 @@ export const StorageService = {
         payload.session_id = additionalData.shiftId;
     }
 
-    console.log(`[DB-ACTION] Intentando actualizar ID: ${rawId} -> ${newStatus}`);
-
     try {
-        // Ejecutamos el UPDATE sin .select(). Esto es clave si el RLS bloquea la lectura post-edición.
-        const { error, status, statusText } = await supabase
+        const { error } = await supabase
             .from('orders')
             .update(payload)
             .eq('id', rawId);
 
-        if (error) {
-            console.error("[DB-ACTION] Error Supabase:", error);
-            throw error;
-        }
-
-        // En Supabase, si status es 204 o 200 y no hay error, la petición fue aceptada.
-        // Si no afectó filas (debido a RLS), status sigue siendo exitoso pero no hizo nada.
-        // Para verificar realmente, hacemos un chequeo rápido si el status es sospechoso
-        console.log(`[DB-ACTION] Respuesta DB: Status ${status} (${statusText})`);
-        
+        if (error) throw error;
         return { success: true };
     } catch (err: any) {
-        console.error("[DB-ACTION] Error crítico:", err.message);
         return { success: false, error: err.message };
     }
   },
@@ -161,7 +162,7 @@ export const StorageService = {
         logo: data.logo,
         themeColor: data.theme_color,
         secondaryColor: data.secondary_color
-      } as any;
+      };
     } catch { return { name: 'Churre POS', currency: 'S/', taxRate: 0.18, pricesIncludeTax: true, themeColor: '#e11d48' }; }
   },
 
