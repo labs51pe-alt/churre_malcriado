@@ -34,8 +34,33 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, setti
   );
 
   return (
-    <div className="flex h-screen bg-[#f8fafc] overflow-hidden selection:bg-brand selection:text-white">
-      <div className="w-16 lg:w-20 bg-white border-r border-slate-100 flex flex-col items-center py-6 lg:py-8 z-20 shadow-xl shadow-slate-200/40 overflow-y-auto custom-scrollbar">
+    <div className="flex h-screen bg-[#f8fafc] overflow-hidden selection:bg-brand selection:text-white flex-col md:flex-row">
+      {/* Mobile Header */}
+      <div className="md:hidden bg-white border-b border-slate-100 px-4 py-3 flex items-center justify-between z-30 shadow-sm shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md overflow-hidden bg-white border border-slate-50">
+            {settings?.logo ? (
+              <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-brand">
+                <Rocket className="w-4 h-4 text-white" />
+              </div>
+            )}
+          </div>
+          <span className="font-black text-slate-800 text-sm tracking-tight uppercase">Churre Malcriado</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400">
+            <User className="w-4 h-4"/>
+          </div>
+          <button onClick={onLogout} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
+            <LogOut className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Desktop Sidebar */}
+      <div className="hidden md:flex w-16 lg:w-20 bg-white border-r border-slate-100 flex-col items-center py-6 lg:py-8 z-20 shadow-xl shadow-slate-200/40 overflow-y-auto custom-scrollbar shrink-0">
         <div className="flex flex-col items-center mb-8 lg:mb-10">
             <div 
               className="w-10 h-10 lg:w-12 lg:h-12 rounded-xl lg:rounded-2xl flex items-center justify-center shadow-lg transform transition-transform hover:rotate-2 overflow-hidden bg-white border border-slate-50"
@@ -76,9 +101,36 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, setti
         </div>
       </div>
 
-      <div className="flex-1 relative overflow-hidden flex flex-col bg-[#f8fafc]">
+      {/* Main Content */}
+      <div className="flex-1 relative overflow-hidden flex flex-col bg-[#f8fafc] pb-16 md:pb-0">
           {children}
+      </div>
+
+      {/* Mobile Bottom Navigation */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-2 py-1 flex items-center justify-around z-30 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+        <MobileNavItem view={ViewState.POS} icon={ShoppingCart} label="POS" currentView={currentView} onChangeView={onChangeView} />
+        <MobileNavItem view={ViewState.ONLINE_ORDERS} icon={Globe} label="WEB" currentView={currentView} onChangeView={onChangeView} />
+        <MobileNavItem view={ViewState.INVENTORY} icon={Archive} label="STOCK" currentView={currentView} onChangeView={onChangeView} />
+        <MobileNavItem view={ViewState.PURCHASES} icon={ShoppingBag} label="COMPRA" currentView={currentView} onChangeView={onChangeView} />
+        {user.role === 'admin' && (
+          <MobileNavItem view={ViewState.SETTINGS} icon={Settings} label="AJUSTES" currentView={currentView} onChangeView={onChangeView} />
+        )}
       </div>
     </div>
   );
 };
+
+const MobileNavItem = ({ view, icon: Icon, label, currentView, onChangeView }: any) => (
+  <button
+    onClick={() => onChangeView(view)}
+    className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-300 flex-1 ${
+      currentView === view ? 'text-brand' : 'text-slate-300'
+    }`}
+  >
+    <Icon className={`w-5 h-5 mb-1 ${currentView === view ? 'scale-110' : ''}`} />
+    <span className="text-[8px] font-bold uppercase tracking-wider">{label}</span>
+    {currentView === view && (
+      <div className="w-1 h-1 rounded-full bg-brand mt-1 animate-pulse"></div>
+    )}
+  </button>
+);

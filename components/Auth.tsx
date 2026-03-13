@@ -95,37 +95,37 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             <div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-amber-500/10 rounded-full blur-[120px]"></div>
         </div>
 
-        <div className="w-full max-w-lg p-6 relative z-10">
-            <div className="text-center mb-10 animate-fade-in">
+        <div className="w-full max-w-lg p-4 md:p-6 relative z-10">
+            <div className="text-center mb-6 md:mb-10 animate-fade-in">
                 <button 
                   onClick={handleLogoClick}
-                  className="w-28 h-28 bg-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 shadow-2xl border border-white/20 hover:scale-105 transition-transform group overflow-hidden"
+                  className="w-20 h-20 md:w-28 md:h-28 bg-white rounded-3xl md:rounded-[2.5rem] flex items-center justify-center mx-auto mb-4 md:mb-6 shadow-2xl border border-white/20 hover:scale-105 transition-transform group overflow-hidden"
                 >
                     {settings?.logo ? (
                       <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" />
                     ) : (
-                      <Store className="w-14 h-14 transition-transform group-hover:rotate-6" style={{ color: brandColor }} />
+                      <Store className="w-10 h-10 md:w-14 md:h-14 transition-transform group-hover:rotate-6" style={{ color: brandColor }} />
                     )}
                 </button>
-                <h1 className="text-4xl font-black text-white tracking-tighter mb-2">
+                <h1 className="text-3xl md:text-4xl font-black text-white tracking-tighter mb-1 md:mb-2">
                    {nameParts[0]}<span style={{ color: brandColor }}>{nameParts[1] || ''}</span>
                 </h1>
-                <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.3em]">Sanguchería Piurana • POS System</p>
+                <p className="text-slate-400 font-bold uppercase text-[8px] md:text-[10px] tracking-[0.2em] md:tracking-[0.3em]">Sanguchería Piurana • POS System</p>
             </div>
 
             <div className={`
-                bg-white/10 backdrop-blur-3xl border border-white/10 p-10 rounded-[4rem] shadow-[0_32px_64px_-15px_rgba(0,0,0,0.5)] 
+                bg-white/10 backdrop-blur-3xl border border-white/10 p-6 md:p-10 rounded-[3rem] md:rounded-[4rem] shadow-[0_32px_64px_-15px_rgba(0,0,0,0.5)] 
                 transition-all duration-300 
                 ${error ? 'border-red-500/50 shake ring-4 ring-red-500/10' : ''}
                 ${loading ? 'opacity-50 scale-95' : 'scale-100'}
             `}>
                 
-                <div className="flex justify-center gap-6 mb-12">
+                <div className="flex justify-center gap-4 md:gap-6 mb-8 md:mb-12">
                     {[0, 1, 2, 3].map((i) => (
                         <div 
                             key={i}
                             className={`
-                                w-5 h-5 rounded-full transition-all duration-300 border-2
+                                w-4 h-4 md:w-5 md:h-5 rounded-full transition-all duration-300 border-2
                                 ${accessCode.length > i 
                                     ? 'border-transparent scale-125' 
                                     : 'bg-transparent border-slate-700'}
@@ -135,53 +135,53 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     ))}
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-8">
+                <div className="grid grid-cols-3 gap-3 md:gap-4 mb-6 md:mb-8">
                     {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
                         <button
                             key={num}
                             onClick={() => handleKeyPress(num)}
                             disabled={loading}
-                            className="h-20 bg-white/5 hover:bg-white/10 border border-white/5 rounded-3xl font-black text-2xl text-white transition-all active:scale-90 flex items-center justify-center"
+                            className="h-16 md:h-20 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl md:rounded-3xl font-black text-xl md:text-2xl text-white transition-all active:scale-90 flex items-center justify-center"
                         >
                             {num}
                         </button>
                     ))}
                     <div className="flex items-center justify-center">
-                        <Lock className="w-6 h-6 text-slate-600" />
+                        <Lock className="w-5 h-5 md:w-6 md:h-6 text-slate-600" />
                     </div>
                     <button
                         onClick={() => handleKeyPress('0')}
                         disabled={loading}
-                        className="h-20 bg-white/5 hover:bg-white/10 border border-white/5 rounded-3xl font-black text-2xl text-white transition-all active:scale-90 flex items-center justify-center"
+                        className="h-16 md:h-20 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl md:rounded-3xl font-black text-xl md:text-2xl text-white transition-all active:scale-90 flex items-center justify-center"
                     >
                         0
                     </button>
                     <button
                         onClick={handleDelete}
                         disabled={loading}
-                        className="h-20 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/10 rounded-3xl font-black text-white transition-all active:scale-90 flex items-center justify-center"
+                        className="h-16 md:h-20 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/10 rounded-2xl md:rounded-3xl font-black text-white transition-all active:scale-90 flex items-center justify-center"
                     >
-                        <Delete className="w-7 h-7" />
+                        <Delete className="w-6 h-6 md:w-7 md:h-7" />
                     </button>
                 </div>
 
                 <div className="text-center">
                     {loading ? (
-                        <div className="flex items-center justify-center gap-3 font-bold uppercase text-[10px] tracking-widest animate-pulse" style={{ color: brandColor }}>
-                            <RefreshCw className="w-4 h-4 animate-spin" /> Verificando PIN
+                        <div className="flex items-center justify-center gap-2 md:gap-3 font-bold uppercase text-[8px] md:text-[10px] tracking-widest animate-pulse" style={{ color: brandColor }}>
+                            <RefreshCw className="w-3.5 h-3.5 md:w-4 md:h-4 animate-spin" /> Verificando PIN
                         </div>
                     ) : error ? (
-                        <p className="text-rose-400 font-black uppercase text-[10px] tracking-widest animate-bounce">Código Incorrecto</p>
+                        <p className="text-rose-400 font-black uppercase text-[8px] md:text-[10px] tracking-widest animate-bounce">Código Incorrecto</p>
                     ) : (
-                        <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest flex items-center justify-center gap-2">
-                            <ShieldCheck className="w-4 h-4 text-emerald-500" /> Terminal de Sanguchería Asegurada
+                        <p className="text-slate-500 font-bold uppercase text-[8px] md:text-[10px] tracking-widest flex items-center justify-center gap-2">
+                            <ShieldCheck className="w-3.5 h-3.5 md:w-4 md:h-4 text-emerald-500" /> Terminal Asegurada
                         </p>
                     )}
                 </div>
             </div>
 
-            <div className="mt-12 flex justify-between items-center px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Sede Piura Activa</span>
+            <div className="mt-8 md:mt-12 flex justify-between items-center px-4 md:px-6 text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                <span className="flex items-center gap-1.5 md:gap-2"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500"></div> Sede Piura Activa</span>
                 <span className="opacity-50">Churre POS v2.6.26</span>
             </div>
         </div>

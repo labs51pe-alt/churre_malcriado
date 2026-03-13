@@ -19,18 +19,20 @@ export const StorageService = {
   getProducts: async (): Promise<Product[]> => {
     try {
       const { data, error } = await supabase.from('menu_items').select('*').order('name');
-      if (error) return [];
+      if (error) throw error;
       return (data || []).map(item => ({
         ...item,
         variants: Array.isArray(item.variants) ? item.variants : [],
         hasVariants: Array.isArray(item.variants) && item.variants.length > 0,
         stock: Number(item.stock || 0)
       }));
-    } catch { return []; }
+    } catch (e: any) {
+      console.error("Error fetching products:", e);
+      return [];
+    }
   },
   
   saveProduct: async (product: Product) => {
-    // Definimos el objeto base
     const payload: any = {
         name: product.name,
         price: Number(product.price),
@@ -41,30 +43,42 @@ export const StorageService = {
         barcode: product.barcode || null
     };
 
-    // Solo incluimos ID si es una edición (UUID largo)
+    // Si es edición, enviamos el ID. Si es nuevo, dejamos que Supabase lo genere o enviamos uno.
     if (product.id && product.id.length > 5) {
         payload.id = product.id;
     }
 
-    const { data, error } = await supabase
-      .from('menu_items')
-      .upsert(payload)
-      .select();
+    try {
+        const { data, error } = await supabase
+          .from('menu_items')
+          .upsert(payload)
+          .select();
 
-    if (error) {
-        // Error de columna faltante (PGRST204 o mensaje descriptivo)
-        if (error.code === 'PGRST204' || error.message.includes('column')) {
-            const missingColumn = error.message.split("'")[1] || 'desconocida';
-            throw new Error(`ESTRUCTURA INCOMPLETA: Falta la columna '${missingColumn}' en Supabase. \n\nSOLUCIÓN: Ejecuta esto en el SQL Editor de Supabase:\nALTER TABLE menu_items ADD COLUMN ${missingColumn} text;`);
+        if (error) {
+            const errorMsg = error.message || JSON.stringify(error);
+            const isColumnError = errorMsg.toLowerCase().includes('column') || error.code === 'PGRST204' || error.code === '42703' || error.code === '42P01';
+            
+            if (isColumnError) {
+                throw new Error(`SQL_FIX_REQUIRED|ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS id text PRIMARY KEY DEFAULT gen_random_uuid()::text;
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS name text;
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS price numeric DEFAULT 0;
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS category text;
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS stock numeric DEFAULT 0;
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS image text;
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS barcode text;
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS variants jsonb DEFAULT '[]'::jsonb;`);
+            }
+            throw new Error(errorMsg);
         }
-        throw new Error(error.message);
+        return data ? data[0] : product;
+    } catch (err: any) {
+        throw err;
     }
-    return data ? data[0] : product;
   },
 
   deleteProduct: async (id: string) => {
     const { error } = await supabase.from('menu_items').delete().eq('id', id);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(error.message || JSON.stringify(error));
   },
 
   // --- Transactions ---
@@ -80,7 +94,7 @@ export const StorageService = {
         total: Number(d.total || 0),
         paymentMethod: d.payment_method || 'cash',
         shiftId: d.session_id ? d.session_id.toString() : undefined,
-        orderOrigin: d.order_origin,
+        orderOrigin: d.order_origin || 'POS',
         customerName: d.customer_name,
         status: d.status,
         address: d.address
@@ -99,69 +113,17 @@ export const StorageService = {
         order_origin: 'POS',
         session_id: transaction.shiftId || null
       });
-    if (error) throw new Error(error.message);
-  },
-
-  updateOrderStatus: async (orderId: string, newStatus: string, additionalData: any = {}) => {
-    const rawId = String(orderId).trim();
-    if (!rawId || rawId === 'undefined' || rawId === 'null') {
-        return { success: false, error: "ID de pedido no válido." };
-    }
-
-    const paymentMap: Record<string, string> = {
-        'cash': 'Efectivo',
-        'yape': 'Yape',
-        'plin': 'Plin',
-        'card': 'Tarjeta',
-        'transfer': 'Transferencia'
-    };
-
-    const method = paymentMap[additionalData.paymentMethod] || additionalData.paymentMethod || 'Efectivo';
-
-    const payload: any = { 
-        status: newStatus,
-        payment_method: method
-    };
-
-    if (additionalData.shiftId) {
-        payload.session_id = additionalData.shiftId;
-    }
-
-    try {
-        const { error } = await supabase
-            .from('orders')
-            .update(payload)
-            .eq('id', rawId);
-
-        if (error) throw error;
-        return { success: true };
-    } catch (err: any) {
-        return { success: false, error: err.message };
-    }
-  },
-
-  updateWebOrderToKitchen: async (orderId: string, shiftId: string, method: string, transaction: Transaction) => {
-    return await StorageService.updateOrderStatus(orderId, 'Completado', {
-        shiftId,
-        paymentMethod: method,
-        total: transaction.total
-    });
+    if (error) throw new Error(error.message || JSON.stringify(error));
   },
 
   getSettings: async (): Promise<StoreSettings> => {
     try {
-      const { data, error } = await supabase.from('pos_settings').select('*').eq('id', 1).single();
-      if (error || !data) return { name: 'Churre POS', currency: 'S/', taxRate: 0.18, pricesIncludeTax: true, themeColor: '#e11d48' };
+      const { data } = await supabase.from('pos_settings').select('*').eq('id', 1).single();
+      if (!data) return { name: 'Churre POS', currency: 'S/', taxRate: 0.18, pricesIncludeTax: true, themeColor: '#e11d48' };
       return {
-        name: data.name,
-        currency: data.currency,
-        taxRate: parseFloat(data.tax_rate) || 0,
-        pricesIncludeTax: !!data.prices_include_tax,
-        address: data.address,
-        phone: data.phone,
-        logo: data.logo,
-        themeColor: data.theme_color,
-        secondaryColor: data.secondary_color
+        name: data.name, currency: data.currency, taxRate: parseFloat(data.tax_rate) || 0,
+        pricesIncludeTax: !!data.prices_include_tax, address: data.address, phone: data.phone,
+        logo: data.logo, themeColor: data.theme_color, secondaryColor: data.secondary_color
       };
     } catch { return { name: 'Churre POS', currency: 'S/', taxRate: 0.18, pricesIncludeTax: true, themeColor: '#e11d48' }; }
   },
@@ -187,7 +149,6 @@ export const StorageService = {
 
   saveShift: async (shift: CashShift) => {
     const { data, error } = await supabase.from('cash_sessions').upsert({
-        ...(shift.id.length > 10 ? { id: shift.id } : {}),
         opened_at: shift.startTime, closed_at: shift.endTime,
         opening_balance: shift.startAmount, closing_balance: shift.endAmount,
         status: shift.status.toLowerCase()
@@ -199,14 +160,13 @@ export const StorageService = {
 
   getSuppliers: async (): Promise<Supplier[]> => {
     try {
-      const { data, error } = await supabase.from('suppliers').select('*').order('name');
-      return error ? [] : data || [];
+      const { data } = await supabase.from('suppliers').select('*').order('name');
+      return data || [];
     } catch { return []; }
   },
 
   saveSupplier: async (supplier: Supplier) => {
     const { data, error } = await supabase.from('suppliers').upsert({
-      id: supplier.id.length > 10 ? supplier.id : undefined,
       name: supplier.name, contact: supplier.contact
     }).select();
     if (error) throw error;
@@ -215,26 +175,62 @@ export const StorageService = {
 
   getPurchases: async (): Promise<Purchase[]> => {
     try {
-      const { data, error } = await supabase.from('purchases').select('*').order('date', { ascending: false });
-      if (error) return [];
+      const { data } = await supabase.from('purchases').select('*').order('date', { ascending: false });
       return (data || []).map(d => ({ ...d, id: d.id.toString(), items: typeof d.items === 'string' ? JSON.parse(d.items) : (d.items || []), supplierId: d.supplier_id }));
     } catch { return []; }
   },
 
   savePurchase: async (purchase: Purchase) => {
-    const { error } = await supabase.from('purchases').insert({ supplier_id: purchase.supplierId, total: Number(purchase.total), items: purchase.items, date: purchase.date });
-    if (error) throw error;
+    await supabase.from('purchases').insert({ supplier_id: purchase.supplierId, total: Number(purchase.total), items: purchase.items, date: purchase.date });
   },
 
   getMovements: async (): Promise<CashMovement[]> => {
     try {
-      const { data, error } = await supabase.from('cash_transactions').select('*').order('created_at', { ascending: false });
-      if (error) return [];
+      const { data } = await supabase.from('cash_transactions').select('*').order('created_at', { ascending: false });
       return (data || []).map(d => ({ id: d.id.toString(), shiftId: d.session_id ? d.session_id.toString() : '', type: d.type.toUpperCase() as any, amount: Number(d.amount), description: d.reason, timestamp: d.created_at }));
     } catch { return []; }
   },
 
   saveMovement: async (m: CashMovement) => {
     await supabase.from('cash_transactions').insert({ session_id: m.shiftId || null, type: m.type.toLowerCase(), amount: Number(m.amount), reason: m.description, created_at: m.timestamp });
+  },
+
+  updateWebOrderToKitchen: async (id: string, shiftId: string, paymentMethod: string, transaction: Transaction) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          status: 'En Cocina',
+          session_id: shiftId,
+          payment_method: paymentMethod,
+          items: transaction.items,
+          total: Number(transaction.total)
+        })
+        .eq('id', id);
+      
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  updateOrderStatus: async (orderId: string, status: string, metadata?: any) => {
+    try {
+      const updateData: any = { status };
+      if (metadata?.shiftId) updateData.session_id = metadata.shiftId;
+      if (metadata?.paymentMethod) updateData.payment_method = metadata.paymentMethod;
+      if (metadata?.total) updateData.total = Number(metadata.total);
+
+      const { error } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', orderId);
+
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   }
 };
