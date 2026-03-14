@@ -29,6 +29,7 @@ export const InventoryView: React.FC<InventoryProps> = ({
     const [searchTerm, setSearchTerm] = useState('');
     const [kardexProduct, setKardexProduct] = useState<Product | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [notification, setNotification] = useState<{ message: string, type: 'SUCCESS' | 'ERROR' } | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const filteredProducts = useMemo(() => {
@@ -110,9 +111,11 @@ export const InventoryView: React.FC<InventoryProps> = ({
                     const bstr = evt.target?.result;
                     const wb = XLSX.read(bstr, { type: 'binary' });
                     const data: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-                    if (data.length > 0) alert(`Se detectaron ${data.length} productos.`);
+                    if (data.length > 0) {
+                        setNotification({ message: `Se detectaron ${data.length} productos.`, type: 'SUCCESS' });
+                    }
                 } catch (error) {
-                    alert('Error al leer el archivo.');
+                    setNotification({ message: 'Error al leer el archivo.', type: 'ERROR' });
                 }
             };
             reader.readAsBinaryString(file);
@@ -242,6 +245,24 @@ export const InventoryView: React.FC<InventoryProps> = ({
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* NOTIFICATION MODAL */}
+            {notification && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-fade-in-up text-center">
+                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 ${
+                            notification.type === 'SUCCESS' ? 'bg-emerald-50 text-emerald-500' : 'bg-rose-50 text-rose-500'
+                        }`}>
+                            {notification.type === 'SUCCESS' ? <Check className="w-8 h-8"/> : <X className="w-8 h-8"/>}
+                        </div>
+                        <h3 className="text-lg font-black text-slate-800 mb-2 uppercase tracking-tight">
+                            {notification.type === 'SUCCESS' ? '¡Hecho!' : 'Error'}
+                        </h3>
+                        <p className="text-sm text-slate-500 mb-8 font-medium">{notification.message}</p>
+                        <button onClick={() => setNotification(null)} className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-black transition-all shadow-xl">Cerrar</button>
                     </div>
                 </div>
             )}

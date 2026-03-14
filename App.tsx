@@ -14,7 +14,7 @@ import { OnlineOrdersView } from './components/OnlineOrdersView';
 import { CashControlModal } from './components/CashControlModal';
 import { POSView } from './components/POSView';
 import { DEFAULT_SETTINGS, CATEGORIES } from './constants';
-import { RefreshCw, X, Package, Tag, DollarSign, Layers, ImageIcon, Save, AlertCircle, Copy, Check, Database } from 'lucide-react';
+import { RefreshCw, X, Package, Tag, DollarSign, Layers, ImageIcon, Save, AlertCircle, Copy, Check, Database, Trash2 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -49,6 +49,8 @@ const App: React.FC = () => {
   const [toastType, setToastType] = useState<'SUCCESS' | 'ERROR'>('SUCCESS');
 
   const [pendingWebOrder, setPendingWebOrder] = useState<Transaction | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string, type: 'PRODUCT' | 'ORDER' } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const brand = typeof settings.themeColor === 'string' ? settings.themeColor : '#e11d48';
@@ -209,6 +211,26 @@ const App: React.FC = () => {
     }
   };
 
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    setIsDeleting(true);
+    try {
+      if (itemToDelete.type === 'PRODUCT') {
+        await StorageService.deleteProduct(itemToDelete.id);
+        setToastMessage("Producto eliminado");
+      }
+      setToastType('SUCCESS');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+      loadData();
+    } catch (e: any) {
+      alert(`Error al eliminar: ${e.message}`);
+    } finally {
+      setIsDeleting(false);
+      setItemToDelete(null);
+    }
+  };
+
   if (isInitializing) return (
     <div className="h-screen flex flex-col items-center justify-center bg-[#fef2f2]">
         <RefreshCw className="w-12 h-12 text-rose-600 animate-spin" />
@@ -227,7 +249,29 @@ const App: React.FC = () => {
           {view === ViewState.ONLINE_ORDERS && (
               <OnlineOrdersView settings={settings} activeShift={activeShift} onOrderCompleted={(t) => { setTicketType('SALE'); setTicketData(t); setShowTicket(true); loadData(); }} />
           )}
-          {view === ViewState.INVENTORY && <InventoryView products={products} settings={settings} transactions={transactions} purchases={purchases} onNewProduct={() => { setCurrentProduct({ id: '', name: '', price: 0, category: CATEGORIES[0], stock: 0, variants: [], image: '' }); setIsProductModalOpen(true); }} onEditProduct={(p) => { setCurrentProduct(p); setIsProductModalOpen(true); }} onDeleteProduct={async (id) => { if(confirm('¿Eliminar?')) { await StorageService.deleteProduct(id); loadData(); } }} onGoToPurchase={(name) => { setInitialPurchaseSearch(name); setView(ViewState.PURCHASES); }} />}
+          {view === ViewState.INVENTORY && (
+              <InventoryView 
+                  products={products} 
+                  settings={settings} 
+                  transactions={transactions} 
+                  purchases={purchases} 
+                  onNewProduct={() => { 
+                      setCurrentProduct({ id: '', name: '', price: 0, category: CATEGORIES[0], stock: 0, variants: [], image: '' }); 
+                      setIsProductModalOpen(true); 
+                  }} 
+                  onEditProduct={(p) => { 
+                      setCurrentProduct(p); 
+                      setIsProductModalOpen(true); 
+                  }} 
+                  onDeleteProduct={(id) => {
+                      setItemToDelete({ id, type: 'PRODUCT' });
+                  }} 
+                  onGoToPurchase={(name) => { 
+                      setInitialPurchaseSearch(name); 
+                      setView(ViewState.PURCHASES); 
+                  }} 
+              />
+          )}
           {view === ViewState.PURCHASES && <PurchasesView products={products} suppliers={suppliers} purchases={purchases} settings={settings} onProcessPurchase={async (p) => { await StorageService.savePurchase(p); loadData(); }} onAddSupplier={async (s) => { await StorageService.saveSupplier(s); loadData(); }} onRequestNewProduct={(barcode) => { setCurrentProduct({ id: '', name: '', price: 0, category: CATEGORIES[0], stock: 0, variants: [], barcode: barcode || '', image: '' }); setIsProductModalOpen(true); }} initialSearchTerm={initialPurchaseSearch} onClearInitialSearch={() => setInitialPurchaseSearch('')} />}
           {view === ViewState.ADMIN && <AdminView transactions={transactions} products={products} settings={settings} />}
           {view === ViewState.REPORTS && <ReportsView transactions={transactions} settings={settings} />}
@@ -362,6 +406,35 @@ const App: React.FC = () => {
 
       {showTicket && ticketData && (
           <Ticket type={ticketType} data={ticketData} settings={settings} onClose={() => setShowTicket(false)} />
+      )}
+
+      {/* MODAL DE CONFIRMACIÓN GLOBAL */}
+      {itemToDelete && (
+          <div className="fixed inset-0 z-[250] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-fade-in-up border border-rose-100">
+                  <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-500 mx-auto mb-6">
+                      <Trash2 className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900 text-center mb-2 uppercase tracking-tight">¿Confirmar Eliminación?</h3>
+                  <p className="text-sm text-slate-500 text-center mb-8 font-medium">Esta acción no se puede deshacer.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                      <button 
+                          onClick={() => setItemToDelete(null)}
+                          disabled={isDeleting}
+                          className="py-4 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all disabled:opacity-50"
+                      >
+                          Cancelar
+                      </button>
+                      <button 
+                          onClick={confirmDelete}
+                          disabled={isDeleting}
+                          className="py-4 bg-rose-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                          {isDeleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Eliminar'}
+                      </button>
+                  </div>
+              </div>
+          </div>
       )}
     </>
   );

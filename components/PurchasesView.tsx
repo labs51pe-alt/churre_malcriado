@@ -39,6 +39,9 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
     const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
     const [newSupplierName, setNewSupplierName] = useState('');
     const [newSupplierContact, setNewSupplierContact] = useState('');
+    
+    // Notification State
+    const [notification, setNotification] = useState<{ message: string, type: 'SUCCESS' | 'ERROR' | 'CONFIRM', onConfirm?: () => void } | null>(null);
 
     const barcodeInputRef = useRef<HTMLInputElement>(null);
 
@@ -90,9 +93,11 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
                 if (product) {
                     addToCart(product);
                 } else {
-                    if (window.confirm(`El producto con código ${code} no existe. ¿Deseas crearlo?`)) {
-                        onRequestNewProduct(code);
-                    }
+                    setNotification({
+                        message: `El producto con código ${code} no existe. ¿Deseas crearlo?`,
+                        type: 'CONFIRM',
+                        onConfirm: () => onRequestNewProduct(code)
+                    });
                 }
                 setBarcodeBuffer('');
             }
@@ -122,8 +127,14 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
     };
 
     const handleProcess = () => {
-        if (cart.length === 0) return alert('El carrito está vacío');
-        if (!selectedSupplierId) return alert('Selecciona un proveedor');
+        if (cart.length === 0) {
+            setNotification({ message: 'El carrito está vacío', type: 'ERROR' });
+            return;
+        }
+        if (!selectedSupplierId) {
+            setNotification({ message: 'Selecciona un proveedor', type: 'ERROR' });
+            return;
+        }
 
         const total = cart.reduce((sum, item) => sum + (item.quantity * item.cost), 0);
         
@@ -154,7 +165,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
         setCart([]);
         setInvoiceNumber('');
         setBarcodeBuffer('');
-        alert('Compra procesada exitosamente');
+        setNotification({ message: 'Compra procesada exitosamente', type: 'SUCCESS' });
     };
 
     const totalAmount = cart.reduce((sum, item) => sum + (item.quantity * item.cost), 0);
@@ -521,6 +532,38 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
                             <button onClick={() => setIsSupplierModalOpen(false)} className="flex-1 py-3 md:py-4 text-slate-500 font-bold hover:bg-slate-50 rounded-xl md:rounded-2xl transition-colors text-sm md:text-base">Cancelar</button>
                             <button onClick={handleSaveSupplier} className="flex-1 py-3 md:py-4 bg-indigo-600 text-white font-bold rounded-xl md:rounded-2xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 hover:scale-[1.02] transition-all text-sm md:text-base">Guardar</button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* NOTIFICATION MODAL */}
+            {notification && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-fade-in-up text-center">
+                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 ${
+                            notification.type === 'SUCCESS' ? 'bg-emerald-50 text-emerald-500' : 
+                            notification.type === 'ERROR' ? 'bg-rose-50 text-rose-500' : 
+                            'bg-indigo-50 text-indigo-500'
+                        }`}>
+                            {notification.type === 'SUCCESS' ? <Check className="w-8 h-8"/> : 
+                             notification.type === 'ERROR' ? <X className="w-8 h-8"/> : 
+                             <ShoppingCart className="w-8 h-8"/>}
+                        </div>
+                        <h3 className="text-lg font-black text-slate-800 mb-2 uppercase tracking-tight">
+                            {notification.type === 'SUCCESS' ? '¡Éxito!' : 
+                             notification.type === 'ERROR' ? 'Atención' : 
+                             'Confirmación'}
+                        </h3>
+                        <p className="text-sm text-slate-500 mb-8 font-medium leading-relaxed">{notification.message}</p>
+                        
+                        {notification.type === 'CONFIRM' ? (
+                            <div className="grid grid-cols-2 gap-3">
+                                <button onClick={() => setNotification(null)} className="py-4 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">No, Cancelar</button>
+                                <button onClick={() => { notification.onConfirm?.(); setNotification(null); }} className="py-4 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Sí, Continuar</button>
+                            </div>
+                        ) : (
+                            <button onClick={() => setNotification(null)} className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-black transition-all shadow-xl">Entendido</button>
+                        )}
                     </div>
                 </div>
             )}

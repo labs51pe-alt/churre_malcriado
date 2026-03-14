@@ -6,7 +6,7 @@ import { supabase } from '../services/supabase';
 import { 
     Clock, RefreshCw, Receipt, Globe, 
     Smartphone, Banknote, CreditCard, X, 
-    ChevronRight, Archive, CheckCircle2,
+    ChevronRight, Archive, CheckCircle2, Trash2,
     MapPin, Loader2, Check, User, Store, Navigation, Eye,
     Printer, FileText
 } from 'lucide-react';
@@ -27,6 +27,8 @@ export const OnlineOrdersView: React.FC<OnlineOrdersViewProps> = ({ settings, ac
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<Transaction | null>(null);
     const [viewOnlyOrder, setViewOnlyOrder] = useState<Transaction | null>(null);
+    const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
     
     const [completedIds, setCompletedIds] = useState<string[]>(() => {
         try {
@@ -146,6 +148,32 @@ export const OnlineOrdersView: React.FC<OnlineOrdersViewProps> = ({ settings, ac
         setOrders(prev => prev.filter(o => o.id !== orderId));
     };
 
+    const handleDeleteOrder = async (orderId: string) => {
+        setProcessingId(orderId);
+        setOrderToDelete(null);
+        try {
+            console.log("[DELETE] Intentando eliminar pedido:", orderId);
+            
+            const { error } = await supabase
+                .from('orders')
+                .delete()
+                .eq('id', orderId);
+
+            if (error) {
+                console.error("[DELETE] Error de Supabase:", error);
+                throw error;
+            }
+            
+            console.log("[DELETE] Pedido eliminado con éxito");
+            setOrders(prev => prev.filter(o => o.id !== orderId));
+        } catch (err: any) {
+            console.error("[DELETE] Error capturado:", err);
+            setErrorMessage(`Error al eliminar: ${err.message || 'Error desconocido'}`);
+        } finally {
+            setProcessingId(null);
+        }
+    };
+
     const getPaymentIcon = (method: string) => {
         const m = String(method).toLowerCase();
         if (m.includes('yape') || m.includes('plin')) return <Smartphone className="w-3.5 h-3.5"/>;
@@ -241,17 +269,41 @@ export const OnlineOrdersView: React.FC<OnlineOrdersViewProps> = ({ settings, ac
 
                                 <div className="flex gap-2 relative z-50">
                                     {!isPaid ? (
-                                        <button 
-                                            onClick={() => setSelectedOrderForPayment(order)}
-                                            disabled={!activeShift || isProcessing}
-                                            className="w-full py-4 md:py-5 bg-slate-900 text-white rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-widest hover:bg-black transition-all flex items-center justify-center gap-2 md:gap-3 shadow-xl active:scale-95"
-                                        >
-                                            <Receipt className="w-4 h-4 md:w-5 md:h-5 text-brand"/> REGISTRAR PAGO
-                                        </button>
+                                        <div className="w-full flex flex-col gap-2">
+                                            <button 
+                                                onClick={() => setSelectedOrderForPayment(order)}
+                                                disabled={!activeShift || isProcessing}
+                                                className="w-full py-4 md:py-5 bg-slate-900 text-white rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-widest hover:bg-black transition-all flex items-center justify-center gap-2 md:gap-3 shadow-xl active:scale-95"
+                                            >
+                                                <Receipt className="w-4 h-4 md:w-5 md:h-5 text-brand"/> REGISTRAR PAGO
+                                            </button>
+                                            <button 
+                                                onClick={() => {
+                                                    console.log("[DEBUG] Click en Eliminar Pedido, ID:", order.id);
+                                                    setOrderToDelete(order.id);
+                                                }}
+                                                disabled={isProcessing}
+                                                className="w-full py-2.5 bg-rose-50 text-rose-500 rounded-xl font-bold text-[9px] uppercase tracking-widest hover:bg-rose-100 transition-all flex items-center justify-center gap-2"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5"/> Eliminar Pedido
+                                            </button>
+                                        </div>
                                     ) : (
-                                        <div className="w-full grid grid-cols-2 gap-2">
-                                            <button onClick={() => setViewOnlyOrder(order)} className="py-3 md:py-4 bg-white border-2 border-slate-100 text-slate-500 rounded-xl md:rounded-2xl font-black text-[9px] md:text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 md:gap-2 hover:bg-slate-50"><Eye className="w-3.5 h-3.5 md:w-4 md:h-4"/> Ver Datos</button>
-                                            <button onClick={() => handleArchiveOrder(order.id)} className="py-3 md:py-4 bg-slate-100 text-slate-400 rounded-xl md:rounded-2xl font-black text-[9px] md:text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 md:gap-2 hover:bg-slate-200"><Archive className="w-3.5 h-3.5 md:w-4 md:h-4"/> Archivar</button>
+                                        <div className="w-full flex flex-col gap-2">
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button onClick={() => setViewOnlyOrder(order)} className="py-3 md:py-4 bg-white border-2 border-slate-100 text-slate-500 rounded-xl md:rounded-2xl font-black text-[9px] md:text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 md:gap-2 hover:bg-slate-50"><Eye className="w-3.5 h-3.5 md:w-4 md:h-4"/> Ver Datos</button>
+                                                <button onClick={() => handleArchiveOrder(order.id)} className="py-3 md:py-4 bg-slate-100 text-slate-400 rounded-xl md:rounded-2xl font-black text-[9px] md:text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 md:gap-2 hover:bg-slate-200"><Archive className="w-3.5 h-3.5 md:w-4 md:h-4"/> Archivar</button>
+                                            </div>
+                                            <button 
+                                                onClick={() => {
+                                                    console.log("[DEBUG] Click en Eliminar Permanentemente, ID:", order.id);
+                                                    setOrderToDelete(order.id);
+                                                }}
+                                                disabled={isProcessing}
+                                                className="w-full py-2 bg-rose-50/50 text-rose-400 rounded-lg font-bold text-[8px] uppercase tracking-widest hover:bg-rose-100 transition-all flex items-center justify-center gap-1.5 border border-rose-100/50"
+                                            >
+                                                <Trash2 className="w-3 h-3"/> Eliminar Permanentemente
+                                            </button>
                                         </div>
                                     )}
                                 </div>
@@ -260,6 +312,48 @@ export const OnlineOrdersView: React.FC<OnlineOrdersViewProps> = ({ settings, ac
                     })}
                 </div>
             </div>
+
+            {/* MODAL DE CONFIRMACIÓN DE ELIMINACIÓN */}
+            {orderToDelete && (
+                <div className="fixed inset-0 z-[150] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-sm rounded-[2rem] p-8 shadow-2xl animate-fade-in-up border border-rose-100">
+                        <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-500 mx-auto mb-6">
+                            <Trash2 className="w-8 h-8" />
+                        </div>
+                        <h3 className="text-xl font-black text-slate-900 text-center mb-2 uppercase tracking-tight">¿Eliminar Pedido?</h3>
+                        <p className="text-sm text-slate-500 text-center mb-8 font-medium">Esta acción es permanente y no se puede deshacer. El pedido se borrará de la base de datos.</p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button 
+                                onClick={() => setOrderToDelete(null)}
+                                className="py-4 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={() => handleDeleteOrder(orderToDelete)}
+                                className="py-4 bg-rose-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-200"
+                            >
+                                Sí, Eliminar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* NOTIFICACIÓN DE ERROR */}
+            {errorMessage && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] animate-fade-in-up">
+                    <div className="bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border border-white/10">
+                        <div className="w-8 h-8 bg-rose-500 rounded-lg flex items-center justify-center shrink-0">
+                            <X className="w-5 h-5" />
+                        </div>
+                        <p className="text-xs font-bold uppercase tracking-widest pr-4">{errorMessage}</p>
+                        <button onClick={() => setErrorMessage(null)} className="text-slate-400 hover:text-white transition-colors">
+                            <Check className="w-5 h-5" />
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* MODAL DE PAGO O VISTA DE DETALLES */}
             {(selectedOrderForPayment || viewOnlyOrder) && (
